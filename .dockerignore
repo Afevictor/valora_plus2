@@ -1,23 +1,13 @@
-# Node modules (reinstall inside Docker)
 node_modules
-npm-debug.log
-yarn-error.log
-pnpm-lock.yaml
-
-# Local build files (Docker builds inside container)
 dist
-
-# Environment files you don’t want in the image (optional)
 .env.local
 .env.development
 .env.test
-
-# OS / editor files
+npm-debug.log
+yarn-error.log
 .DS_Store
-*.swp
 .vscode/
 .idea/
-
-# Git files
 .git
 .gitignore
+
