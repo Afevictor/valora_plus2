@@ -1,31 +1,35 @@
-# Stage 1: Build React app
-FROM node:20-alpine AS builder
+# Stage 1: Build frontend
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Copy package files and install dependencies
 COPY package.json package-lock.json* ./
+
 RUN npm install -g npm@11.7.0
 RUN npm install
 
-# Copy source code
 COPY . .
 
-# Build the app
+ARG VITE_GEMINI_API_KEY
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_KEY
+ARG VITE_SUPABASE_PROJECT_ID
+
+RUN echo "VITE_GEMINI_API_KEY=$VITE_GEMINI_API_KEY" >> .env && \
+    echo "VITE_SUPABASE_URL=$VITE_SUPABASE_URL" >> .env && \
+    echo "VITE_SUPABASE_KEY=$VITE_SUPABASE_KEY" >> .env && \
+    echo "VITE_SUPABASE_PROJECT_ID=$VITE_SUPABASE_PROJECT_ID" >> .env
+
 RUN npm run build
 
-# Stage 2: Serve with Nginx
+# Stage 2: Serve static with Nginx
 FROM nginx:alpine
 
-# Remove default Nginx static files
-RUN rm -rf /usr/share/nginx/html/*
+COPY --from=build /app/dist /usr/share/nginx/html
 
-# Copy built app from previous stage
-COPY --from=builder /app/dist /usr/share/nginx/html
+EXPOSE 3000
 
-# Copy Nginx config if you have custom config
-# COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
+
+
 
