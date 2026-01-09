@@ -6,10 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview --port 3000 --host 0.0.0.0"
+    "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^0.21.0", 
+    "@google/genai": "^0.23.0",
     "@supabase/supabase-js": "^2.39.8",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -27,3 +27,4 @@
     "vite": "^5.1.4"
   }
 }
+
