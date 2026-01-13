@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
@@ -169,9 +168,6 @@ const Analytics: React.FC = () => {
   const valuedPaint = aiData?.financials?.paint_material_total || 0;
   const valuedTotal = aiData?.financials?.total_net || 0;
   
-  const laborDiff = realLaborCost - valuedLabor;
-  const laborDeviation = valuedLabor > 0 ? ((laborDiff / valuedLabor) * 100).toFixed(1) : '0.0';
-  
   const estimatedRealCost = realLaborCost + (valuedParts * 0.7) + (valuedPaint * 0.6); // 30% margin assumed on parts/paint
   const netBenefit = valuedTotal - estimatedRealCost;
   const marginPercentage = valuedTotal > 0 ? (netBenefit / valuedTotal * 100) : 0;
@@ -235,7 +231,7 @@ const Analytics: React.FC = () => {
           <div className="bg-white rounded-[32px] border-2 border-dashed border-slate-200 p-24 text-center text-slate-300">
               <svg className="w-20 h-20 mx-auto mb-6 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
               <h2 className="text-xl font-black uppercase tracking-[0.3em]">Pick a file to audit</h2>
-              <p className="mt-2 font-medium">Select a finished repair from the dropdown to start the AI analysis.</p>
+              <p className="mt-2 font-medium">Select a finished repair from the dropdown to start the analysis.</p>
           </div>
       ) : (
           <div className="relative">
@@ -249,7 +245,7 @@ const Analytics: React.FC = () => {
                             <svg className="w-8 h-8 text-brand-600 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
                         </div>
                     </div>
-                    <p className="mt-6 text-slate-900 font-black uppercase tracking-[0.2em] text-sm">AI Profitability Scan...</p>
+                    <p className="mt-6 text-slate-900 font-black uppercase tracking-[0.2em] text-sm">Profitability Scan...</p>
                     <p className="mt-1 text-slate-400 text-xs font-bold">Matching Appraisal data with Shop Logs</p>
                 </div>
             )}
@@ -279,7 +275,7 @@ const Analytics: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Row 1: KPI Cards (Image 2 style) */}
+                {/* Row 1: KPI Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <KPICard 
                         loading={isAnalyzing}
@@ -304,7 +300,7 @@ const Analytics: React.FC = () => {
                     />
                 </div>
 
-                {/* Row 2: Margin Breakdown (Image 2 style) */}
+                {/* Row 2: Margin Breakdown */}
                 <div className="space-y-4">
                     <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
                         <svg className="w-5 h-5 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
@@ -338,16 +334,16 @@ const Analytics: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Row 3: Charts (Image 1 style) */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Row 3: Charts */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 min-h-[400px]">
                     {/* Valuation vs Real Cost Area Chart */}
                     <div className="bg-white p-8 rounded-[32px] shadow-sm border border-slate-200">
                         <h3 className="font-black text-slate-800 mb-8 flex justify-between items-center text-sm uppercase tracking-widest">
                             Evolución Mensual: Valorado vs Coste Real
                             <span className="text-[8px] bg-slate-100 text-slate-500 px-2 py-1 rounded font-black">MARKET TREND</span>
                         </h3>
-                        <div className="h-72 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
+                        <div className="h-[300px] w-full">
+                            <ResponsiveContainer width="100%" height="100%" minHeight={300}>
                                 <AreaChart data={MOCK_MONTHLY_DATA} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                     <defs>
                                         <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
@@ -377,8 +373,8 @@ const Analytics: React.FC = () => {
                             Eficacia Productiva por Sección
                             <span className="text-[8px] bg-slate-100 text-slate-500 px-2 py-1 rounded font-black">OPERATIONS</span>
                         </h3>
-                        <div className="h-72 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
+                        <div className="h-[300px] w-full">
+                            <ResponsiveContainer width="100%" height="100%" minHeight={300}>
                                 <BarChart data={barData} layout="vertical" margin={{ top: 0, right: 30, left: 20, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                                     <XAxis type="number" domain={[0, 100]} hide />
@@ -391,7 +387,7 @@ const Analytics: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Final Detail Table (Image 1 style) */}
+                {/* Final Detail Table */}
                 <div className="bg-white rounded-[32px] shadow-sm border border-slate-200 overflow-hidden">
                     <div className="px-8 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                         <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest">DETALLE POR EXPEDIENTE (AUDITADO)</h3>
@@ -431,14 +427,14 @@ const Analytics: React.FC = () => {
                     </div>
                 </div>
 
-                {/* AI Summary conclude card */}
+                {/* Comment card */}
                 {aiData && (
                     <div className="bg-slate-900 text-white p-10 rounded-[32px] shadow-2xl relative overflow-hidden border-b-4 border-brand-500">
                         <div className="absolute top-0 right-0 p-8 opacity-5">
                              <svg className="w-40 h-40" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
                         </div>
                         <div className="relative z-10">
-                            <h3 className="text-brand-400 font-black uppercase text-xs tracking-[0.4em] mb-4">Gemini AI Audit Conclusion</h3>
+                            <h3 className="text-brand-400 font-black uppercase text-xs tracking-[0.4em] mb-4">comment</h3>
                             <p className="text-2xl font-medium leading-relaxed italic text-slate-100">"{aiData.ai_analysis?.summary || 'Analysis indicates standard profitability for this vehicle repair class.'}"</p>
                             
                             <div className="flex flex-wrap gap-4 mt-8">
@@ -449,7 +445,7 @@ const Analytics: React.FC = () => {
                                     </span>
                                 </div>
                                 <div className="bg-white/5 border border-white/10 px-5 py-3 rounded-2xl">
-                                    <span className="text-[10px] text-slate-500 uppercase font-black block mb-1">AI Confidence</span>
+                                    <span className="text-[10px] text-slate-500 uppercase font-black block mb-1">Confidence</span>
                                     <span className="text-lg font-black text-slate-200">{aiData.metadata?.confidence_score || '90'}%</span>
                                 </div>
                             </div>
