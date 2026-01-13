@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Chat, Type } from "@google/genai";
 
-// Fixed: Initialize the Gemini API client directly with the environment variable as per coding guidelines.
+// Initialize the Gemini API client directly with the environment variable as per coding guidelines.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // System instruction for the chat assistant
@@ -181,24 +181,36 @@ export const analyzeProfitabilityDocument = async (base64Data: string, mimeType:
         parts: [
           { inlineData: { mimeType: mimeType, data: base64Data } },
           { 
-            text: `Act as a Spanish Automotive Data Extractor.
-            I am providing a document of a "Peritación" (Appraisal), "Presupuesto" (Estimate), or "Factura" (Invoice).
-            It might be a "SilverDAT", "Audatex", or "GT Motive" document.
-
+            text: `Act as a Spanish Automotive Data Extractor specialized in "SilverDAT", "Audatex", and "GT Motive" reports.
+            
             TASK:
-            Extract vehicle details, financial summaries, and technical metadata.
-            Convert all numeric values to standard numbers.
-
-            SPANISH KEYWORDS TO LOOK FOR:
-            1. VEHICLE: "Matrícula", "Placa", "Bastidor", "VIN", "Marca", "Modelo".
-            2. FINANCIALS: "Mano de Obra", "Recambios", "Material Pintura", "Base Imponible", "Total Neto", "Total", "Horas", "Precio Hora".
-            3. METADATA: "Nº Valoración", "Referencia", "Fecha".
+            Extract vehicle details and complete financial summary. 
+            The document is likely multiple pages. LOOK SPECIFICALLY for a "Resumen" (Summary) page which contains the totals.
+            
+            EXTRACT THESE FIELDS (MANDATORY):
+            1. VEHICLE: 
+               - Plate: "Matrícula" or "Placa".
+               - VIN: "Bastidor", "ID del vehículo" or "VIN".
+               - Make/Model: "Mercedes-Benz C Berlina", etc.
+               
+            2. FINANCIALS (Convert to numbers, ignore € symbol):
+               - total_net: "Base imponible", "Subtotal" or "Total neto".
+               - total_gross: "TOTAL", "Total con IVA" or "Suma final".
+               - parts_total: "Importe recambios", "Piezas" or "Recambios".
+               - labor_total: "Total Mano de Obra", "Trabajos" or "Mecánica".
+               - paint_material_total: "Total pintura", "Material de pintura" or "Materiales anexos".
+               - labor_hours: "Horas totales", "Tiempo MO". (Usually found in the summary table).
+               - labor_rate: "Precio/hora", "Tarifa horaria".
+               
+            3. AI ANALYSIS:
+               - Write a 2-sentence summary in English about the repair profitability.
+               - Rating: "High", "Medium", or "Low".
             ` 
           }
         ]
       },
       config: {
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -210,7 +222,7 @@ export const analyzeProfitabilityDocument = async (base64Data: string, mimeType:
                 vin: { type: Type.STRING },
                 year: { type: Type.STRING }
               },
-              required: ["make_model", "plate", "vin", "year"]
+              required: ["make_model", "plate", "vin"]
             },
             financials: {
               type: Type.OBJECT,
@@ -223,7 +235,7 @@ export const analyzeProfitabilityDocument = async (base64Data: string, mimeType:
                 labor_hours: { type: Type.NUMBER },
                 labor_rate: { type: Type.NUMBER }
               },
-              required: ["total_net", "total_gross", "parts_total", "labor_total", "paint_material_total", "labor_hours", "labor_rate"]
+              required: ["total_net", "total_gross"]
             },
             metadata: {
               type: Type.OBJECT,
@@ -231,8 +243,7 @@ export const analyzeProfitabilityDocument = async (base64Data: string, mimeType:
                 doc_number: { type: Type.STRING },
                 date: { type: Type.STRING },
                 confidence_score: { type: Type.NUMBER }
-              },
-              required: ["doc_number", "date", "confidence_score"]
+              }
             },
             ai_analysis: {
               type: Type.OBJECT,
@@ -241,10 +252,10 @@ export const analyzeProfitabilityDocument = async (base64Data: string, mimeType:
                 profitability_rating: { type: Type.STRING },
                 risk_factors: { type: Type.ARRAY, items: { type: Type.STRING } }
               },
-              required: ["summary", "profitability_rating", "risk_factors"]
+              required: ["summary", "profitability_rating"]
             }
           },
-          required: ["vehicle", "financials", "metadata", "ai_analysis"]
+          required: ["vehicle", "financials", "ai_analysis"]
         }
       }
     });
@@ -252,16 +263,25 @@ export const analyzeProfitabilityDocument = async (base64Data: string, mimeType:
     let text = response.text;
     if (!text) throw new Error("No data returned from Gemini");
     
-    // Clean up potential conversational text or markdown (though schema should prevent it)
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-        text = jsonMatch[0];
-    }
+    // Cleanup function to ensure we only parse the JSON part
+    const cleanJson = (str: string) => {
+        // Remove markdown code blocks if present
+        let cleaned = str.replace(/```json/g, "").replace(/```/g, "").trim();
+        // Find the first { and the last }
+        const start = cleaned.indexOf("{");
+        const end = cleaned.lastIndexOf("}");
+        if (start !== -1 && end !== -1) {
+            cleaned = cleaned.substring(start, end + 1);
+        }
+        return cleaned;
+    };
 
     try {
-        return JSON.parse(text);
+        const cleanedText = cleanJson(text);
+        return JSON.parse(cleanedText);
     } catch (parseError) {
-        console.error("JSON Parse Error:", parseError);
+        console.error("JSON Parse Error. Raw text was:", text);
+        console.error("Parse Error Details:", parseError);
         return null;
     }
 
@@ -270,3 +290,4 @@ export const analyzeProfitabilityDocument = async (base64Data: string, mimeType:
     return null;
   }
 };
+
