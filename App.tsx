@@ -3,7 +3,7 @@ import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'reac
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import CostCalculator from './components/CostCalculator';
-import SmartReception from './components/NewAppraisal'; 
+import SmartReception from './components/NewAppraisal';
 import Analytics from './components/Analytics';
 import ChatBot from './components/ChatBot';
 import ClientArea from './components/ClientArea';
@@ -42,29 +42,50 @@ const App = () => {
     return sessionStorage.getItem('vp_active_role') as AppRole | null;
   });
   const [showAuth, setShowAuth] = useState<'login' | 'signup' | 'client_login' | 'client_signup' | null>(null);
+  const PageTitle: React.FC<{ role: string }> = ({ role }) => {
+    const location = useLocation();
+    const titles: Record<string, string> = {
+      '/': 'Panel de Control',
+      '/kanban': 'Taller / OTs',
+      '/reception': 'Nueva Entrada',
+      '/valuations': 'Solicitudes Peritación',
+      '/history-ot': 'Historial Reparaciones',
+      '/contacts': 'Clientes',
+      '/crm': 'CRM / Ventas',
+      '/claims-planner': 'Gestor de Siniestros',
+      '/history-claims': 'Historial Siniestros',
+      '/analytics': 'Análisis / Informes',
+      '/calculator': 'Calculadora Costes',
+      '/bitrix-config': 'Conexión Bitrix24',
+      '/tutorials': 'Academia',
+      '/client-area': 'Mi Taller',
+      '/client-analysis': 'Análisis'
+    };
+    return <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">{titles[location.pathname] || 'Panel de Control'}</h1>;
+  };
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const initSession = async () => {
-        try {
-            const { data: { session } } = await supabase.auth.getSession();
-            setSession(session);
-        } catch (e) {
-            console.warn("Auth initialization warning:", e);
-        } finally {
-            setLoading(false);
-        }
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setSession(session);
+      } catch (e) {
+        console.warn("Auth initialization warning:", e);
+      } finally {
+        setLoading(false);
+      }
     };
-    
+
     initSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (_event === 'SIGNED_OUT') {
-          setSession(null);
-          setActiveRole(null);
-          sessionStorage.removeItem('vp_active_role');
-          localStorage.removeItem('vp_bitrix_config');
+        setSession(null);
+        setActiveRole(null);
+        sessionStorage.removeItem('vp_active_role');
+        localStorage.removeItem('vp_bitrix_config');
       }
     });
 
@@ -91,38 +112,38 @@ const App = () => {
   if (!session || !activeRole) {
     // If user is authenticated but hasn't entered PIN, force PIN entry (Workshop Mode)
     if (session && !activeRole) {
-        return (
-            <Auth 
-              initialView="pin_entry"
-              onAuthSuccess={handleAuthSuccess}
-              onBackToLanding={() => {
-                supabase.auth.signOut();
-                sessionStorage.removeItem('vp_active_role');
-                setShowAuth(null);
-              }}
-            />
-        );
+      return (
+        <Auth
+          initialView="pin_entry"
+          onAuthSuccess={handleAuthSuccess}
+          onBackToLanding={() => {
+            supabase.auth.signOut();
+            sessionStorage.removeItem('vp_active_role');
+            setShowAuth(null);
+          }}
+        />
+      );
     }
 
     // Show Auth if user clicked a trigger on landing
     if (showAuth) {
-        return (
-            <Auth 
-                initialView={showAuth as any}
-                onAuthSuccess={handleAuthSuccess}
-                onBackToLanding={() => setShowAuth(null)}
-            />
-        );
+      return (
+        <Auth
+          initialView={showAuth as any}
+          onAuthSuccess={handleAuthSuccess}
+          onBackToLanding={() => setShowAuth(null)}
+        />
+      );
     }
 
     // Default: Show Landing Page
     return (
-        <LandingPage 
-            onLoginClick={() => setShowAuth('login')}
-            onSignupClick={() => setShowAuth('signup')}
-            onClientLoginClick={() => setShowAuth('client_login')}
-            onClientSignupClick={() => setShowAuth('client_signup')}
-        />
+      <LandingPage
+        onLoginClick={() => setShowAuth('login')}
+        onSignupClick={() => setShowAuth('signup')}
+        onClientLoginClick={() => setShowAuth('client_login')}
+        onClientSignupClick={() => setShowAuth('client_signup')}
+      />
     );
   }
 
@@ -133,23 +154,23 @@ const App = () => {
     <Router>
       <div className="flex h-screen bg-slate-50 font-sans">
         {/* Sidebar */}
-        <Sidebar 
-          isOpen={isSidebarOpen} 
-          toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
+        <Sidebar
+          isOpen={isSidebarOpen}
+          toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           activeRole={activeRole as AppRole}
         />
 
         {/* Main Content Wrapper */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          
+
           {/* Mobile Header */}
           <div className="lg:hidden bg-white border-b border-slate-200 p-4 flex items-center justify-between">
-             <div className="font-bold text-brand-500 text-xl">Valora Plus</div>
-             <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-slate-600">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-             </button>
+            <div className="font-bold text-brand-500 text-xl">Valora Plus</div>
+            <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-slate-600">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
           </div>
 
           {/* Scrollable Content Area */}
@@ -157,7 +178,7 @@ const App = () => {
             <div className="max-w-7xl mx-auto w-full">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
-                
+
                 {/* RECEPTION & APPRAISAL - Admin, Staff or Client */}
                 <Route path="/reception" element={
                   <ProtectedRoleRoute allowedRoles={['Admin', 'Admin_Staff', 'Client']} activeRole={activeRole as AppRole}>
@@ -169,7 +190,7 @@ const App = () => {
                     <SmartReception />
                   </ProtectedRoleRoute>
                 } />
-                
+
                 {/* CLIENT ONLY ANALYSIS TOOL */}
                 <Route path="/client-analysis" element={
                   <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
@@ -242,7 +263,7 @@ const App = () => {
                     <BitrexConfig />
                   </ProtectedRoleRoute>
                 } />
-                
+
                 {/* SHARED / PUBLIC WITHIN SESSION */}
                 <Route path="/analytics/report/:id" element={<AnalysisReport />} />
                 <Route path="/vehicle/:id" element={<VehicleDetail />} />
