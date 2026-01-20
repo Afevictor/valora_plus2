@@ -47,6 +47,7 @@ const CostCalculator: React.FC = () => {
     const [hoursPerDay, setHoursPerDay] = useState<number>(8);
     const [daysPerYear, setDaysPerYear] = useState<number>(218);
     const [selectedPeriod, setSelectedPeriod] = useState(currentYear);
+    const [margin, setMargin] = useState<number>(20); // Default 20% margin
     const [isSaving, setIsSaving] = useState(false);
     const [activeCalc, setActiveCalc] = useState<HourCostCalculation | null>(null);
     const [history, setHistory] = useState<HourCostCalculation[]>([]);
@@ -76,6 +77,7 @@ const CostCalculator: React.FC = () => {
             setStructure(currentCalc.payload_input.structure || INITIAL_STRUCTURE);
             setHoursPerDay(currentCalc.payload_input.hoursPerDay || 8);
             setDaysPerYear(currentCalc.payload_input.daysPerYear || 218);
+            setMargin(currentCalc.payload_input.margin || 20);
         } else {
             setActiveCalc(null);
             if (selectedPeriod !== currentYear) {
@@ -139,6 +141,10 @@ const CostCalculator: React.FC = () => {
                     structure,
                     hoursPerDay,
                     daysPerYear,
+                    structure,
+                    hoursPerDay,
+                    daysPerYear,
+                    margin,
                     staffSnapshot: staff.map(s => ({ id: s.id, name: s.fullName, salary: s.annualSalary, prod: s.porcentaje_productivo }))
                 },
                 resultado_calculo: results,
@@ -286,6 +292,45 @@ const CostCalculator: React.FC = () => {
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-tighter">Días Productivos / Año</label>
                                 <input type="number" disabled={isLocked} className={`w-full p-2 border border-slate-300 rounded font-bold ${isLocked ? 'bg-slate-100' : ''}`} value={daysPerYear} onChange={e => setDaysPerYear(Number(e.target.value))} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Sales Price Module */}
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div className="bg-emerald-50 px-6 py-4 border-b border-emerald-100 flex justify-between items-center">
+                            <h2 className="font-bold text-emerald-900 uppercase text-xs">Precio de Venta Sugerido</h2>
+                            <span className="text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded text-[10px] font-black tracking-widest uppercase">Rentabilidad</span>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <div className="flex justify-between items-center mb-1">
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-tighter">Margen de Beneficio</label>
+                                    <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">{margin}%</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="100"
+                                    step="1"
+                                    disabled={isLocked}
+                                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                    value={margin}
+                                    onChange={e => setMargin(Number(e.target.value))}
+                                />
+                            </div>
+
+                            <div className="pt-4 border-t border-slate-100 grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase">Coste Hora</p>
+                                    <p className="text-xl font-bold text-slate-700">{results.hourlyCost.toFixed(2)} €</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-[10px] font-black text-emerald-600 uppercase">Precio Venta</p>
+                                    <p className="text-2xl font-black text-emerald-600">
+                                        {(results.hourlyCost * (1 + margin / 100)).toFixed(2)} €
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>

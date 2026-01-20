@@ -161,7 +161,7 @@ export interface TimelineEvent {
   completed: boolean;
 }
 
-export type TimePhase = 'Bodywork' | 'Preparation' | 'Paint' | 'Finished';
+export type TimePhase = 'Bodywork' | 'Preparation' | 'Paint' | 'Finished' | 'disassembly' | 'bodywork' | 'paint';
 
 export interface TimeLog {
   id: string;

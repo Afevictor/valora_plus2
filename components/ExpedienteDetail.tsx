@@ -14,8 +14,13 @@ import {
     supabase
 } from '../services/supabaseClient';
 
-const MANDATORY_PHASES = ['Desmontaje', 'Reparación Chapa', 'Pintura'] as const;
-type MandatoryPhase = typeof MANDATORY_PHASES[number];
+const REPAIR_PHASES = [
+    { value: 'disassembly', label: 'Desmontaje' },
+    { value: 'bodywork', label: 'Reparación Chapa' },
+    { value: 'paint', label: 'Pintura' }
+] as const;
+
+type MandatoryPhase = typeof REPAIR_PHASES[number]['value'];
 
 interface ActiveTimer {
     startTime: number;
@@ -88,10 +93,41 @@ const ExpedienteDetail: React.FC = () => {
             // Recuperar estado del temporizador
             const saved = localStorage.getItem(`vp_labor_timer_${id}`);
             if (saved) {
-                const parsed: ActiveTimer = JSON.parse(saved);
-                setTimer(parsed);
-                setSelectedPhase(parsed.phase);
-                setSelectedEmployeeId(parsed.employeeId);
+                try {
+                    const parsed: ActiveTimer = JSON.parse(saved);
+
+                    // MIGRATION: Fix legacy phase names to match DB constraints
+                    const phaseMap: Record<string, MandatoryPhase> = {
+                        'Desmontaje': 'disassembly',
+                        'Reparación Chapa': 'bodywork',
+                        'Pintura': 'paint'
+                    };
+
+                    // If the saved phase is a legacy key, map it. Otherwise use it as is if valid, else default to disconnect.
+                    let safePhase: MandatoryPhase | null = null;
+
+                    if (REPAIR_PHASES.some(p => p.value === parsed.phase)) {
+                        safePhase = parsed.phase as MandatoryPhase;
+                    } else if (phaseMap[parsed.phase as string]) {
+                        safePhase = phaseMap[parsed.phase as string];
+                        // Update storage with fixed value immediately
+                        parsed.phase = safePhase;
+                        localStorage.setItem(`vp_labor_timer_${id}`, JSON.stringify(parsed));
+                    }
+
+                    if (safePhase) {
+                        setTimer(parsed);
+                        setSelectedPhase(safePhase);
+                        setSelectedEmployeeId(parsed.employeeId);
+                    } else {
+                        // Invalid state, clear it to prevent crash
+                        console.warn("Found invalid timer state, clearing:", parsed);
+                        localStorage.removeItem(`vp_labor_timer_${id}`);
+                    }
+                } catch (e) {
+                    console.error("Error parsing saved timer:", e);
+                    localStorage.removeItem(`vp_labor_timer_${id}`);
+                }
             }
             setIsLoadingMain(false);
         };
@@ -197,7 +233,7 @@ const ExpedienteDetail: React.FC = () => {
             localStorage.removeItem(`vp_labor_timer_${id}`);
             setSelectedPhase('');
         } else {
-            alert(`Fallo en el guardado: ${result.error}\n\nEsto suele significar que está intentando guardar registros para un expediente que aún no está sincronizado en la nube.`);
+            alert(`Fallo en el guardado: ${result.error}`);
         }
         setIsFinishing(false);
     };
@@ -396,7 +432,269 @@ const ExpedienteDetail: React.FC = () => {
                     </div>
                 )}
 
-                {/* El resto de las pestañas (Docs, Tiempos, Chat) seguirían similar... */}
+                {activeTab === 'docs' && (
+                    <div className="flex-1 p-8 md:p-12 animate-fade-in">
+                        <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-8 border-b pb-3">
+                            Documentación del Expediente
+                        </h2>
+
+                        <div className="space-y-10">
+                            {/* Valuation Reports Section */}
+                            {valuationReports.length > 0 && (
+                                <div>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
+                                            <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            </svg>
+                                        </div>
+                                        <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                                            Informes de Valoración ({valuationReports.length})
+                                        </h3>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {valuationReports.map((file) => (
+                                            <div key={file.id} className="bg-gradient-to-br from-purple-50 to-white p-5 rounded-2xl border border-purple-200 shadow-sm hover:shadow-md transition-all group">
+                                                <div className="flex items-start justify-between mb-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-bold text-slate-800 text-sm truncate group-hover:text-purple-600 transition-colors">
+                                                            {file.original_filename || 'Informe de Valoración'}
+                                                        </p>
+                                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                                            {new Date(file.uploaded_at).toLocaleDateString('es-ES', {
+                                                                day: '2-digit',
+                                                                month: 'short',
+                                                                year: 'numeric'
+                                                            })}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleDownload(file.publicUrl, file.original_filename, file.id)}
+                                                    disabled={downloadingFileId === file.id}
+                                                    className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wide transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                                >
+                                                    {downloadingFileId === file.id ? (
+                                                        <>
+                                                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                            </svg>
+                                                            Descargando...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                            </svg>
+                                                            Descargar
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* General Documents Section */}
+                            {generalDocs.length > 0 && (
+                                <div>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                                            <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                            </svg>
+                                        </div>
+                                        <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                                            Documentos Generales ({generalDocs.length})
+                                        </h3>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {generalDocs.map((file) => (
+                                            <div key={file.id} className="bg-gradient-to-br from-blue-50 to-white p-5 rounded-2xl border border-blue-200 shadow-sm hover:shadow-md transition-all group">
+                                                <div className="flex items-start justify-between mb-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-bold text-slate-800 text-sm truncate group-hover:text-blue-600 transition-colors">
+                                                            {file.original_filename || 'Documento'}
+                                                        </p>
+                                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                                            {new Date(file.uploaded_at).toLocaleDateString('es-ES', {
+                                                                day: '2-digit',
+                                                                month: 'short',
+                                                                year: 'numeric'
+                                                            })}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleDownload(file.publicUrl, file.original_filename, file.id)}
+                                                    disabled={downloadingFileId === file.id}
+                                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wide transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                                >
+                                                    {downloadingFileId === file.id ? (
+                                                        <>
+                                                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                            </svg>
+                                                            Descargando...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                            </svg>
+                                                            Descargar
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Photos Section */}
+                            {visualEvidence.filter(f => f.bucket === 'evidence_photos').length > 0 && (
+                                <div>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+                                            <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                            </svg>
+                                        </div>
+                                        <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                                            Fotografías ({visualEvidence.filter(f => f.bucket === 'evidence_photos').length})
+                                        </h3>
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                                        {visualEvidence.filter(f => f.bucket === 'evidence_photos').map((file) => (
+                                            <div key={file.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all overflow-hidden group">
+                                                <div className="aspect-square bg-slate-100 relative overflow-hidden">
+                                                    <img
+                                                        src={file.publicUrl}
+                                                        alt={file.original_filename}
+                                                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                                    />
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <div className="absolute bottom-0 left-0 right-0 p-3">
+                                                            <p className="text-white text-xs font-bold truncate">
+                                                                {file.original_filename}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="p-3">
+                                                    <button
+                                                        onClick={() => handleDownload(file.publicUrl, file.original_filename, file.id)}
+                                                        disabled={downloadingFileId === file.id}
+                                                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-3 rounded-xl font-bold text-xs uppercase tracking-wide transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                                    >
+                                                        {downloadingFileId === file.id ? (
+                                                            <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                            </svg>
+                                                        ) : (
+                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                                            </svg>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Videos Section */}
+                            {visualEvidence.filter(f => f.bucket === 'videos').length > 0 && (
+                                <div>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+                                            <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                            </svg>
+                                        </div>
+                                        <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                                            Videos ({visualEvidence.filter(f => f.bucket === 'videos').length})
+                                        </h3>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {visualEvidence.filter(f => f.bucket === 'videos').map((file) => (
+                                            <div key={file.id} className="bg-gradient-to-br from-red-50 to-white p-5 rounded-2xl border border-red-200 shadow-sm hover:shadow-md transition-all group">
+                                                <div className="flex items-start justify-between mb-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                                <svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 24 24">
+                                                                    <path d="M8 5v14l11-7z" />
+                                                                </svg>
+                                                            </div>
+                                                            <p className="font-bold text-slate-800 text-sm truncate group-hover:text-red-600 transition-colors">
+                                                                {file.original_filename || 'Video'}
+                                                            </p>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-400 font-medium">
+                                                            {new Date(file.uploaded_at).toLocaleDateString('es-ES', {
+                                                                day: '2-digit',
+                                                                month: 'short',
+                                                                year: 'numeric'
+                                                            })}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleDownload(file.publicUrl, file.original_filename, file.id)}
+                                                    disabled={downloadingFileId === file.id}
+                                                    className="w-full bg-red-600 hover:bg-red-700 text-white py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wide transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                                >
+                                                    {downloadingFileId === file.id ? (
+                                                        <>
+                                                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                            </svg>
+                                                            Descargando...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                            </svg>
+                                                            Descargar
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Empty State */}
+                            {files.length === 0 && (
+                                <div className="flex flex-col items-center justify-center py-20 px-6">
+                                    <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-6">
+                                        <svg className="w-12 h-12 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                        </svg>
+                                    </div>
+                                    <h3 className="text-lg font-black text-slate-400 uppercase tracking-wider mb-2">
+                                        Sin Documentación
+                                    </h3>
+                                    <p className="text-slate-400 text-sm text-center max-w-md">
+                                        No se han subido documentos, fotos o videos para este expediente durante la recepción.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* El resto de las pestañas (Tiempos, Chat) seguirían similar... */}
                 {activeTab === 'tiempos' && (
                     <div className="flex-1 flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-slate-100 animate-fade-in">
                         <div className="w-full md:w-[420px] p-8 space-y-8 bg-slate-50/50">
@@ -415,40 +713,54 @@ const ExpedienteDetail: React.FC = () => {
                                             {employees.map(e => <option key={e.id} value={e.id}>{e.fullName}</option>)}
                                         </select>
                                     </div>
-                                </div>
-                            </div>
 
-                            <div className="bg-slate-900 rounded-[32px] p-8 text-center shadow-2xl relative overflow-hidden ring-4 ring-slate-100 group">
-                                <p className="text-[10px] font-black text-brand-400 uppercase tracking-[0.4em] mb-3">Tiempo en Sesión</p>
-                                <h3 className="text-6xl font-mono font-black text-white tabular-nums tracking-tighter mb-6">
-                                    {formatTime(displaySeconds)}
-                                </h3>
-                                <div className="flex gap-4">
-                                    {!timer ? (
-                                        <button
-                                            disabled={!selectedEmployeeId}
-                                            onClick={startTimer}
-                                            className="flex-1 bg-brand-500 hover:bg-brand-400 text-white py-5 rounded-2xl font-black text-lg shadow-xl transition-all active:scale-95 disabled:opacity-20 disabled:grayscale"
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-500 uppercase mb-2 ml-1">Fase de Reparación</label>
+                                        <select
+                                            disabled={!!timer}
+                                            className="w-full p-4 border border-slate-200 rounded-2xl bg-white shadow-sm focus:ring-2 focus:ring-brand-500 outline-none font-bold text-slate-700 disabled:opacity-60 transition-all"
+                                            value={selectedPhase}
+                                            onChange={e => setSelectedPhase(e.target.value as MandatoryPhase)}
                                         >
-                                            INICIAR SESIÓN
-                                        </button>
-                                    ) : (
-                                        <button
-                                            onClick={finishTimer}
-                                            disabled={isFinishing}
-                                            className="flex-1 bg-red-600 hover:bg-red-500 text-white py-5 rounded-2xl font-black shadow-lg disabled:opacity-50"
-                                        >
-                                            {isFinishing ? 'Guardando...' : 'Finalizar'}
-                                        </button>
-                                    )}
+                                            <option value="">Seleccionar Fase...</option>
+                                            {REPAIR_PHASES.map(p => (
+                                                <option key={p.value} value={p.value}>{p.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-900 rounded-[32px] p-8 text-center shadow-2xl relative overflow-hidden ring-4 ring-slate-100 group">
+                                    <p className="text-[10px] font-black text-brand-400 uppercase tracking-[0.4em] mb-3">Tiempo en Sesión</p>
+                                    <h3 className="text-6xl font-mono font-black text-white tabular-nums tracking-tighter mb-6">
+                                        {formatTime(displaySeconds)}
+                                    </h3>
+                                    <div className="flex gap-4">
+                                        {!timer ? (
+                                            <button
+                                                disabled={!selectedEmployeeId}
+                                                onClick={startTimer}
+                                                className="flex-1 bg-brand-500 hover:bg-brand-400 text-white py-5 rounded-2xl font-black text-lg shadow-xl transition-all active:scale-95 disabled:opacity-20 disabled:grayscale"
+                                            >
+                                                INICIAR SESIÓN
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={finishTimer}
+                                                disabled={isFinishing}
+                                                className="flex-1 bg-red-600 hover:bg-red-500 text-white py-5 rounded-2xl font-black shadow-lg disabled:opacity-50"
+                                            >
+                                                {isFinishing ? 'Guardando...' : 'Finalizar'}
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 )}
-
             </div>
-        </div>
+        </div >
     );
 };
 

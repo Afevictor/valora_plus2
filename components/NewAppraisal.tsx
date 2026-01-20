@@ -230,7 +230,7 @@ const NewAppraisal: React.FC = () => {
                     await saveFileMetadata({
                         workshop_id: user.id,
                         expediente_id: dbId,
-                        name: staged.file.name,
+                        original_filename: staged.file.name,
                         category: staged.category,
                         storage_path: uploadedPath,
                         bucket: staged.bucket,

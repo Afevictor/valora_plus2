@@ -8,6 +8,13 @@ import ClientForm from './ClientForm';
 
 const CLAIM_TYPES = ['Colisión', 'Robo', 'Incendio', 'Lunas', 'Fenómeno Atmosférico', 'Vandalismo', 'Daños Propios'];
 
+const INSURANCE_COMPANIES = [
+    'Mapfre', 'Mutua Madrileña', 'Allianz', 'AXA', 'Generali', 'Liberty Seguros',
+    'Línea Directa', 'Reale', 'Zurich', 'Catalana Occidente', 'Pelayo', 'MMT Seguros',
+    'Helvetia', 'RACC', 'Santa Lucía', 'Caser', 'Plus Ultra', 'Nationale Suisse',
+    'Aser', 'MGS', 'Verti', 'Qualitas Auto', 'Genesis', 'Balumba', 'Fiatc', 'DKV'
+].sort();
+
 const NewValuation: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -221,6 +228,12 @@ const NewValuation: React.FC = () => {
         }
         if (!formData.costReference) {
             alert("Debe seleccionar una referencia de cálculo de costes.");
+            return;
+        }
+        // Validate Opposing Vehicle
+        if (formData.opposingVehicle?.exists && !formData.opposingVehicle.plate) {
+            alert("Es obligatorio indicar la Matrícula del Vehículo Contrario.");
+            setStep(3); // Go back to step 3
             return;
         }
 
@@ -475,18 +488,23 @@ const NewValuation: React.FC = () => {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Compañía de Seguros</label>
-                                        <select
-                                            className="w-full p-2 border border-slate-300 rounded"
+                                        <input
+                                            list="insurance-options"
+                                            type="text"
+                                            className="w-full p-2 border border-slate-300 rounded bg-white"
+                                            placeholder="Seleccionar o escribir..."
                                             value={formData.insuranceCompany}
                                             onChange={(e) => handleInputChange('root', 'insuranceCompany', e.target.value)}
-                                        >
-                                            <option value="">Seleccionar Compañía...</option>
-                                            {insuranceOptions.length > 0 ? (
-                                                insuranceOptions.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
-                                            ) : (
-                                                <option disabled>No hay compañías de seguros en Contactos</option>
-                                            )}
-                                        </select>
+                                        />
+                                        <datalist id="insurance-options">
+                                            {INSURANCE_COMPANIES.map(company => (
+                                                <option key={company} value={company} />
+                                            ))}
+                                            {insuranceOptions
+                                                .filter(opt => !INSURANCE_COMPANIES.includes(opt.name))
+                                                .map(c => <option key={c.id} value={c.name} />)
+                                            }
+                                        </datalist>
                                     </div>
                                 </div>
 
@@ -574,12 +592,13 @@ const NewValuation: React.FC = () => {
                                 {formData.opposingVehicle?.exists && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 p-6 rounded-lg border border-slate-200">
                                         <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Matrícula Contraria</label>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Matrícula del Vehículo Contrario <span className="text-red-500">*</span></label>
                                             <input
                                                 type="text"
-                                                className="w-full p-2 border border-slate-300 rounded uppercase font-mono"
+                                                className="w-full p-2 border border-slate-300 rounded uppercase font-mono bg-white"
                                                 value={formData.opposingVehicle?.plate}
                                                 onChange={(e) => handleInputChange('opposingVehicle', 'plate', e.target.value)}
+                                                placeholder="0000XXX"
                                             />
                                         </div>
                                         <div>

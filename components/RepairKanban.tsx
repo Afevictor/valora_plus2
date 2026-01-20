@@ -107,7 +107,7 @@ const RepairKanban: React.FC = () => {
             const metadataSuccess = await saveFileMetadata({
                 workshop_id: user.id,
                 expediente_id: closingJob.id,
-                name: closingFile.name,
+                original_filename: closingFile.name,
                 category: 'Valuation Report',
                 storage_path: uploadedPath,
                 bucket: 'documents',
