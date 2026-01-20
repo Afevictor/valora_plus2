@@ -141,9 +141,6 @@ const CostCalculator: React.FC = () => {
                     structure,
                     hoursPerDay,
                     daysPerYear,
-                    structure,
-                    hoursPerDay,
-                    daysPerYear,
                     margin,
                     staffSnapshot: staff.map(s => ({ id: s.id, name: s.fullName, salary: s.annualSalary, prod: s.porcentaje_productivo }))
                 },
