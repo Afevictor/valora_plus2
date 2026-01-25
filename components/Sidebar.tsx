@@ -10,46 +10,65 @@ interface SidebarProps {
   activeRole: AppRole;
 }
 
-const NavItem = ({ to, icon, label, active }: { to: string, icon: React.ReactNode, label: string, active: boolean }) => (
-  <Link
-    to={to}
-    className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors mb-1 ${active
-      ? 'bg-brand-500 text-white shadow-md'
-      : 'text-slate-600 hover:bg-brand-50 hover:text-brand-600'
-      }`}
-  >
-    {icon}
-    <span className="font-medium text-sm">{label}</span>
-  </Link>
-);
+const NavItem = ({ to, icon, label, active, isClient }: { to: string, icon: React.ReactNode, label: string, active: boolean, isClient: boolean }) => {
+  return (
+    <Link
+      to={to}
+      className={`group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 mb-1.5 relative overflow-hidden ${active
+        ? isClient ? 'bg-emerald-600/10 text-emerald-400' : 'bg-brand-600/10 text-brand-400'
+        : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+        }`}
+    >
+      {active && (
+        <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full ${isClient ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]' : 'bg-brand-500 shadow-[0_0_12px_rgba(59,130,246,0.8)]'}`} />
+      )}
+
+      <div className={`transition-transform duration-300 group-hover:scale-110 ${active ? 'text-inherit' : 'text-slate-500 group-hover:text-slate-300'}`}>
+        {icon}
+      </div>
+
+      <span className={`font-semibold text-sm tracking-tight transition-all duration-300 ${active ? 'translate-x-1' : 'group-hover:translate-x-0.5'}`}>
+        {label}
+      </span>
+
+      {active && (
+        <div className={`absolute right-2 w-1.5 h-1.5 rounded-full ${isClient ? 'bg-emerald-500' : 'bg-brand-500'} animate-pulse`} />
+      )}
+    </Link>
+  );
+};
 
 const SectionHeader = ({ label }: { label: string }) => (
-  <div className="px-4 mt-6 mb-2">
-    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{label}</p>
+  <div className="px-4 mt-8 mb-3">
+    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{label}</p>
   </div>
 );
 
-// SVG Icons
-const DashboardIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></svg>;
-const EntryIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M9 15h6" /><path d="M12 18v-6" /></svg>;
-const KanbanIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z" /><path d="M9 9h6" /><path d="M9 13h6" /><path d="M9 17h6" /></svg>;
-const CalculatorIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" /><line x1="8" x2="16" y1="6" y2="6" /><line x1="16" x2="16" y1="14" y2="18" /><path d="M16 10h.01" /><path d="M12 10h.01" /><path d="M8 10h.01" /><path d="M12 14h.01" /><path d="M8 14h.01" /><path d="M12 18h.01" /><path d="M8 18h.01" /></svg>;
-const ChartIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="m19 9-5 5-4-4-3 3" /></svg>;
-const UserIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>;
-const CrmIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
-const ContactIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
-const ValuationsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /><path d="M16 13H8" /><path d="M16 17H8" /><path d="M10 9H8" /></svg>;
-const ShieldIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>;
-const HistoryIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v5h5" /><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" /></svg>;
-const ArchiveIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="5" x="2" y="3" rx="1" /><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" /><path d="M10 12h4" /></svg>;
-const AcademyIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /><path d="M12 11h8" /><path d="M12 7h8" /></svg>;
-const LinkIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>;
+const IconWrapper = ({ children }: { children: React.ReactNode }) => (
+  <div className="w-5 h-5 flex items-center justify-center">
+    {children}
+  </div>
+);
+
+const DashboardIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9" /><rect x="14" y="3" width="7" height="5" /><rect x="14" y="12" width="7" height="9" /><rect x="3" y="16" width="7" height="5" /></svg></IconWrapper>;
+const ValuationsIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg></IconWrapper>;
+const ContactIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg></IconWrapper>;
+const CrmIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></IconWrapper>;
+const ShieldIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg></IconWrapper>;
+const ArchiveIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" /><line x1="10" y1="12" x2="14" y2="12" /></svg></IconWrapper>;
+const LinkIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg></IconWrapper>;
+const HistoryIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg></IconWrapper>;
+const EntryIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="12" y1="18" x2="12" y2="12" /><line x1="9" y1="15" x2="15" y2="15" /></svg></IconWrapper>;
+const KanbanIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18" /><path d="M15 3v18" /></svg></IconWrapper>;
+const CalculatorIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" /><line x1="8" y1="6" x2="16" y2="6" /><line x1="16" y1="14" x2="16" y2="18" /><path d="M16 10h.01" /><path d="M12 10h.01" /><path d="M8 10h.01" /><path d="M12 14h.01" /><path d="M8 14h.01" /><path d="M12 18h.01" /><path d="M8 18h.01" /></svg></IconWrapper>;
+const ChartIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83" /><path d="M22 12A10 10 0 0 0 12 2v10z" /></svg></IconWrapper>;
+const UserIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg></IconWrapper>;
 
 const NotificationCenter = React.lazy(() => import('./NotificationCenter'));
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) => {
   const location = useLocation();
-  const [displayName, setDisplayName] = useState('Usuario Valora Plus');
+  const [displayName, setDisplayName] = useState('');
 
   useEffect(() => {
     const fetchName = async () => {
@@ -63,7 +82,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
       } else {
         const profile = await getCompanyProfileFromSupabase();
         if (profile?.companyName) {
-          setDisplayName(profile.companyName);
+          setDisplayName(profile.companyName || 'Taller Valora');
         }
       }
     };
@@ -74,119 +93,117 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
     await supabase.auth.signOut();
   };
 
-  const isAdmin = activeRole === 'Admin';
-  const isOperator = activeRole === 'Operator';
-  const isAdminStaff = activeRole === 'Admin_Staff';
   const isClient = activeRole === 'Client';
+  const sidebarTheme = isClient ? 'bg-[#062016]' : 'bg-[#0f172a]';
 
   return (
     <>
-      {/* Mobile Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+          className="fixed inset-0 bg-black/70 z-40 lg:hidden backdrop-blur-sm transition-opacity duration-300"
           onClick={toggleSidebar}
         />
       )}
 
-      {/* Sidebar */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-30 w-64 bg-white border-r border-slate-200 transform transition-transform duration-200 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 ${sidebarTheme} border-r border-white/5 transform transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-2xl ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
           }`}
       >
-        <div className="h-full flex flex-col">
-          {/* Logo Area */}
-          <Link to="/" className="h-16 flex items-center px-6 border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer group">
-            <div className="flex items-center gap-2 font-bold text-xl text-brand-600">
-              <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-black group-hover:bg-brand-700 transition-colors">
+        <div className="h-full flex flex-col relative overflow-hidden">
+          <div className="absolute -top-24 -left-24 w-64 h-64 bg-brand-500/10 rounded-full blur-[100px] pointer-events-none" />
+          <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none" />
+
+          <div className="h-24 flex items-center px-8 shrink-0 relative">
+            <Link to="/" className="flex items-center gap-3">
+              <div className={`w-10 h-10 ${isClient ? 'bg-emerald-600 shadow-emerald-500/40' : 'bg-brand-600 shadow-brand-500/40'} rounded-xl flex items-center justify-center text-white font-black text-xl shadow-lg ring-2 ring-white/10`}>
                 V+
               </div>
-              VALORA PLUS
-            </div>
-          </Link>
+              <div className="flex flex-col">
+                <span className="font-black text-lg text-white tracking-tight leading-none uppercase">Valora Plus</span>
+                <span className={`text-[10px] font-bold ${isClient ? 'text-emerald-500' : 'text-brand-500'} tracking-widest uppercase mt-0.5`}>DMS Intelligence</span>
+              </div>
+            </Link>
+          </div>
 
-          {/* Navigation */}
-          <nav className="flex-1 px-4 py-4 overflow-y-auto">
+          <nav className="flex-1 px-4 py-2 overflow-y-auto custom-scrollbar relative">
             {isClient ? (
               <>
                 <SectionHeader label="Portal del Cliente" />
-                <NavItem to="/" icon={<DashboardIcon />} label="Mis Reparaciones" active={location.pathname === '/'} />
-                <NavItem to="/reception" icon={<EntryIcon />} label="Nueva Solicitud" active={location.pathname === '/reception'} />
-                <NavItem to="/client-analysis" icon={<ChartIcon />} label="Herramienta de Análisis" active={location.pathname === '/client-analysis'} />
+                <NavItem to="/" icon={<DashboardIcon />} label="Mis Reparaciones" active={location.pathname === '/'} isClient={true} />
+                <NavItem to="/kanban" icon={<KanbanIcon />} label="Tablero de Progreso" active={location.pathname === '/kanban'} isClient={true} />
+                <NavItem to="/history-ot" icon={<HistoryIcon />} label="Historial Reparaciones" active={location.pathname === '/history-ot'} isClient={true} />
+                <NavItem to="/reception" icon={<EntryIcon />} label="Nueva Solicitud" active={location.pathname === '/reception'} isClient={true} />
+                <NavItem to="/analytics" icon={<ChartIcon />} label="Análisis / Informes" active={location.pathname === '/analytics'} isClient={true} />
+                <NavItem to="/calculator" icon={<CalculatorIcon />} label="Calculadora de Costes" active={location.pathname === '/calculator'} isClient={true} />
+                <NavItem to="/client-area" icon={<UserIcon />} label="Mi Taller (Perfil)" active={location.pathname === '/client-area'} isClient={true} />
               </>
             ) : (
               <>
-                <NavItem to="/" icon={<DashboardIcon />} label="Panel de Control" active={location.pathname === '/'} />
+                <SectionHeader label="Principal" />
+                <NavItem to="/" icon={<DashboardIcon />} label="Panel de Control" active={location.pathname === '/'} isClient={false} />
 
-                {(isAdmin || isOperator) && (
-                  <>
-                    <SectionHeader label="Gestión de Taller" />
-                    <NavItem to="/kanban" icon={<KanbanIcon />} label="Taller / OTs" active={location.pathname === '/kanban'} />
-                  </>
-                )}
+                <SectionHeader label="Peritación & Siniestros" />
+                <NavItem to="/valuations" icon={<ValuationsIcon />} label="Solicitudes Peritación" active={location.pathname === '/valuations'} isClient={false} />
+                <NavItem to="/claims-planner" icon={<ShieldIcon />} label="Gestor de Siniestros" active={location.pathname === '/claims-planner'} isClient={false} />
+                <NavItem to="/history-claims" icon={<ArchiveIcon />} label="Historial Siniestros" active={location.pathname === '/history-claims'} isClient={false} />
 
-                {(isAdmin || isAdminStaff) && (
-                  <>
-                    <SectionHeader label="Recepción y Peritación" />
-                    <NavItem to="/reception" icon={<EntryIcon />} label="Nueva Entrada" active={location.pathname === '/reception'} />
-                    <NavItem to="/valuations" icon={<ValuationsIcon />} label="Solicitudes Peritación" active={location.pathname === '/valuations'} />
-                  </>
-                )}
+                <SectionHeader label="Ventas & Operaciones" />
+                <NavItem to="/contacts" icon={<ContactIcon />} label="Clientes" active={location.pathname === '/contacts'} isClient={false} />
+                <NavItem to="/crm" icon={<CrmIcon />} label="CRM / Estrategia" active={location.pathname === '/crm'} isClient={false} />
 
-                {isAdmin && (
-                  <>
-                    <SectionHeader label="DMS Avanzado" />
-                    <NavItem to="/history-ot" icon={<HistoryIcon />} label="Historial Reparaciones" active={location.pathname === '/history-ot'} />
-                    <SectionHeader label="Ventas y Clientes" />
-                    <NavItem to="/contacts" icon={<ContactIcon />} label="Clientes" active={location.pathname === '/contacts'} />
-                    <NavItem to="/crm" icon={<CrmIcon />} label="CRM / Ventas" active={location.pathname === '/crm'} />
-                    <SectionHeader label="Herramientas" />
-                    <NavItem to="/claims-planner" icon={<ShieldIcon />} label="Gestor de Siniestros" active={location.pathname === '/claims-planner'} />
-                    <NavItem to="/history-claims" icon={<ArchiveIcon />} label="Historial Siniestros" active={location.pathname === '/history-claims'} />
-                    <NavItem to="/analytics" icon={<ChartIcon />} label="Análisis / Informes" active={location.pathname === '/analytics'} />
-                    <NavItem to="/calculator" icon={<CalculatorIcon />} label="Calculadora Costes" active={location.pathname === '/calculator'} />
-                    <SectionHeader label="Integraciones" />
-                    <NavItem to="/bitrix-config" icon={<LinkIcon />} label="Conexión Bitrix24" active={location.pathname === '/bitrix-config'} />
-                  </>
-                )}
-
-                <SectionHeader label="Ayuda y Soporte" />
-                <NavItem to="/tutorials" icon={<AcademyIcon />} label="Formación / Tutoriales" active={location.pathname === '/tutorials'} />
-                {isAdmin && <NavItem to="/client-area" icon={<UserIcon />} label="Mi Taller" active={location.pathname === '/client-area'} />}
+                <SectionHeader label="Sistema" />
+                <NavItem to="/bitrix-config" icon={<LinkIcon />} label="Bitrix24 Link" active={location.pathname === '/bitrix-config'} isClient={false} />
               </>
+            )}
+
+            {!isClient && (
+              <div className="mt-12 p-5 rounded-2xl bg-gradient-to-br from-brand-600/20 to-indigo-600/20 border border-white/5 relative overflow-hidden group">
+                <div className="relative z-10">
+                  <p className="text-[10px] font-black text-brand-400 uppercase tracking-widest mb-1">Valora AI</p>
+                  <p className="text-xs font-bold text-slate-200 mb-3 leading-snug">Optimiza tu rentabilidad con el nuevo análisis inteligente.</p>
+                  <Link to="/crm" className="text-[10px] font-black text-white bg-brand-600 px-3 py-1.5 rounded-lg hover:bg-brand-500 transition-colors uppercase inline-block font-sans">Probar Ahora</Link>
+                </div>
+                <div className="absolute -bottom-8 -right-8 w-24 h-24 bg-brand-500/20 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
+              </div>
             )}
           </nav>
 
-          {/* Footer User Profile & Notifications */}
-          <div className="border-t border-slate-100 bg-slate-50">
-            {/* Active Role Indicator */}
-            <div className="p-4 bg-white/50 text-[10px] font-black text-slate-400 uppercase tracking-widest px-8">
-              Rol de Sesión: <span className={isClient ? 'text-emerald-600' : 'text-brand-600'}>{activeRole}</span>
-            </div>
-            {!isClient && (
-              <React.Suspense fallback={<div className="h-12"></div>}>
-                <NotificationCenter />
-              </React.Suspense>
-            )}
-            <div className="p-4 pt-0">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full ${isClient ? 'bg-emerald-100 text-emerald-700' : 'bg-brand-100 text-brand-700'} border border-opacity-20 flex items-center justify-center font-bold`}>
-                  {activeRole.charAt(0)}
+          <footer className="p-4 shrink-0 mt-auto bg-slate-900/50 backdrop-blur-md border-t border-white/5">
+            <div className="flex items-center gap-3 p-2 rounded-2xl hover:bg-white/5 transition-colors group relative">
+              {!isClient && (
+                <div className="absolute -top-12 right-4">
+                  <React.Suspense fallback={<div className="h-10 w-10" />}>
+                    <NotificationCenter />
+                  </React.Suspense>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-slate-800 truncate">{displayName}</p>
-                  <button
-                    onClick={handleLogout}
-                    className="text-xs text-red-500 font-bold hover:underline"
-                  >
-                    Cerrar Sesión
+              )}
+              <div className={`w-11 h-11 rounded-2xl ${isClient ? 'bg-emerald-600 shadow-emerald-500/20' : 'bg-brand-600 shadow-brand-500/20'} text-white shadow-lg flex items-center justify-center font-black relative overflow-hidden group-hover:rotate-3 transition-transform duration-300 ring-2 ring-white/10`}>
+                <span className="relative z-10">{activeRole ? activeRole.charAt(0) : 'U'}</span>
+                <div className="absolute inset-0 bg-gradient-to-tr from-black/20 to-transparent" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-white truncate leading-tight tracking-tight">{displayName}</p>
+                <div className="flex items-center justify-between mt-0.5">
+                  <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${isClient ? 'bg-emerald-500/20 text-emerald-400' : 'bg-brand-500/20 text-brand-400'}`}>
+                    {activeRole || 'User'}
+                  </span>
+                  <button onClick={handleLogout} className="text-[10px] text-red-400/60 font-black hover:text-red-400 transition-colors uppercase tracking-tight font-sans">
+                    Logout
                   </button>
                 </div>
               </div>
             </div>
-          </div>
+          </footer>
         </div>
       </aside>
+
+      <style dangerouslySetInnerHTML={{
+        __html: `
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.05); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.1); }
+      `}} />
     </>
   );
 };

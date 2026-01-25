@@ -257,7 +257,12 @@ const ExpedienteDetail: React.FC = () => {
     // Clasificación de Archivos
     const visualEvidence = files.filter(f => ['evidence_photos', 'videos'].includes(f.bucket));
     const valuationReports = files.filter(f => f.category === 'Valuation Report');
-    const generalDocs = files.filter(f => f.bucket === 'documents' && f.category !== 'Valuation Report');
+    const systemDocs = files.filter(f => f.bucket === 'documents' && f.category !== 'Valuation Report');
+    const otherDocs = files.filter(f =>
+        !visualEvidence.find(v => v.id === f.id) &&
+        !valuationReports.find(v => v.id === f.id) &&
+        !systemDocs.find(v => v.id === f.id)
+    );
 
     const getStatusLabel = (status: string) => {
         const map: Record<string, string> = {
@@ -457,10 +462,13 @@ const ExpedienteDetail: React.FC = () => {
                                             <div key={file.id} className="bg-gradient-to-br from-purple-50 to-white p-5 rounded-2xl border border-purple-200 shadow-sm hover:shadow-md transition-all group">
                                                 <div className="flex items-start justify-between mb-3">
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="font-bold text-slate-800 text-sm truncate group-hover:text-purple-600 transition-colors">
-                                                            {file.original_filename || 'Informe de Valoración'}
-                                                        </p>
-                                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] font-black uppercase">Informe</span>
+                                                            <p className="font-bold text-slate-800 text-sm truncate group-hover:text-purple-600 transition-colors">
+                                                                {file.original_filename || 'Informe de Valoración'}
+                                                            </p>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-400 font-medium">
                                                             {new Date(file.uploaded_at).toLocaleDateString('es-ES', {
                                                                 day: '2-digit',
                                                                 month: 'short',
@@ -497,8 +505,8 @@ const ExpedienteDetail: React.FC = () => {
                                 </div>
                             )}
 
-                            {/* General Documents Section */}
-                            {generalDocs.length > 0 && (
+                            {/* System Documents Section */}
+                            {systemDocs.length > 0 && (
                                 <div>
                                     <div className="flex items-center gap-3 mb-4">
                                         <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
@@ -507,18 +515,21 @@ const ExpedienteDetail: React.FC = () => {
                                             </svg>
                                         </div>
                                         <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">
-                                            Documentos Generales ({generalDocs.length})
+                                            Documentos del Sistema ({systemDocs.length})
                                         </h3>
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {generalDocs.map((file) => (
+                                        {systemDocs.map((file) => (
                                             <div key={file.id} className="bg-gradient-to-br from-blue-50 to-white p-5 rounded-2xl border border-blue-200 shadow-sm hover:shadow-md transition-all group">
                                                 <div className="flex items-start justify-between mb-3">
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="font-bold text-slate-800 text-sm truncate group-hover:text-blue-600 transition-colors">
-                                                            {file.original_filename || 'Documento'}
-                                                        </p>
-                                                        <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[9px] font-black uppercase whitespace-nowrap">{file.category || 'Documento'}</span>
+                                                            <p className="font-bold text-slate-800 text-sm truncate group-hover:text-blue-600 transition-colors">
+                                                                {file.original_filename || 'Documento'}
+                                                            </p>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-400 font-medium">
                                                             {new Date(file.uploaded_at).toLocaleDateString('es-ES', {
                                                                 day: '2-digit',
                                                                 month: 'short',
@@ -531,6 +542,67 @@ const ExpedienteDetail: React.FC = () => {
                                                     onClick={() => handleDownload(file.publicUrl, file.original_filename, file.id)}
                                                     disabled={downloadingFileId === file.id}
                                                     className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wide transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                                >
+                                                    {downloadingFileId === file.id ? (
+                                                        <>
+                                                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                            </svg>
+                                                            Descargando...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                            </svg>
+                                                            Descargar
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* OTHER Documents Section */}
+                            {otherDocs.length > 0 && (
+                                <div>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
+                                            <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            </svg>
+                                        </div>
+                                        <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                                            Documentos del Expediente ({otherDocs.length})
+                                        </h3>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {otherDocs.map((file) => (
+                                            <div key={file.id} className="bg-gradient-to-br from-slate-50 to-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
+                                                <div className="flex items-start justify-between mb-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[9px] font-black uppercase whitespace-nowrap">{file.category || 'Otros'}</span>
+                                                            <p className="font-bold text-slate-800 text-sm truncate group-hover:text-slate-600 transition-colors">
+                                                                {file.original_filename || 'Archivo'}
+                                                            </p>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-400 font-medium">
+                                                            {new Date(file.uploaded_at).toLocaleDateString('es-ES', {
+                                                                day: '2-digit',
+                                                                month: 'short',
+                                                                year: 'numeric'
+                                                            })}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleDownload(file.publicUrl, file.original_filename, file.id)}
+                                                    disabled={downloadingFileId === file.id}
+                                                    className="w-full bg-slate-600 hover:bg-slate-700 text-white py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wide transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                                                 >
                                                     {downloadingFileId === file.id ? (
                                                         <>
@@ -577,9 +649,10 @@ const ExpedienteDetail: React.FC = () => {
                                                         alt={file.original_filename}
                                                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                                                     />
-                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-80 group-hover:opacity-100 transition-opacity">
                                                         <div className="absolute bottom-0 left-0 right-0 p-3">
-                                                            <p className="text-white text-xs font-bold truncate">
+                                                            <span className="px-2 py-0.5 bg-emerald-500 text-white rounded text-[8px] font-black uppercase mb-1 inline-block">{file.category || 'Imagen'}</span>
+                                                            <p className="text-white text-[10px] font-bold truncate">
                                                                 {file.original_filename}
                                                             </p>
                                                         </div>
@@ -633,9 +706,12 @@ const ExpedienteDetail: React.FC = () => {
                                                                     <path d="M8 5v14l11-7z" />
                                                                 </svg>
                                                             </div>
-                                                            <p className="font-bold text-slate-800 text-sm truncate group-hover:text-red-600 transition-colors">
-                                                                {file.original_filename || 'Video'}
-                                                            </p>
+                                                            <div className="min-w-0">
+                                                                <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-[9px] font-black uppercase mb-0.5 inline-block">{file.category || 'Video'}</span>
+                                                                <p className="font-bold text-slate-800 text-sm truncate group-hover:text-red-600 transition-colors">
+                                                                    {file.original_filename || 'Video'}
+                                                                </p>
+                                                            </div>
                                                         </div>
                                                         <p className="text-[10px] text-slate-400 font-medium">
                                                             {new Date(file.uploaded_at).toLocaleDateString('es-ES', {

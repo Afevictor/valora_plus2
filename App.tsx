@@ -42,6 +42,7 @@ const App = () => {
     return sessionStorage.getItem('vp_active_role') as AppRole | null;
   });
   const [showAuth, setShowAuth] = useState<'login' | 'signup' | 'client_login' | 'client_signup' | null>(null);
+  const [showTutorials, setShowTutorials] = useState(false);
   const PageTitle: React.FC<{ role: string }> = ({ role }) => {
     const location = useLocation();
     const titles: Record<string, string> = {
@@ -108,21 +109,18 @@ const App = () => {
     );
   }
 
-  // PUBLIC FLOW: Landing Page -> Auth -> App
+  // PROTECTED FLOW: Landing Page -> Auth -> App
   if (!session || !activeRole) {
-    // If user is authenticated but hasn't entered PIN, force PIN entry (Workshop Mode)
+    // AUTO-ROLE ENFORCEMENT: If session exists but no activeRole, check metadata
     if (session && !activeRole) {
-      return (
-        <Auth
-          initialView="pin_entry"
-          onAuthSuccess={handleAuthSuccess}
-          onBackToLanding={() => {
-            supabase.auth.signOut();
-            sessionStorage.removeItem('vp_active_role');
-            setShowAuth(null);
-          }}
-        />
-      );
+      const userType = session.user?.user_metadata?.user_type;
+      if (userType === 'client') {
+        handleAuthSuccess('Client');
+      } else {
+        // Workshop users automatically get Admin role, bypassing passcode
+        handleAuthSuccess('Admin');
+      }
+      return null;
     }
 
     // Show Auth if user clicked a trigger on landing
@@ -136,6 +134,31 @@ const App = () => {
       );
     }
 
+    // Show Tutorials if user clicked a trigger on landing
+    if (showTutorials) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col">
+          <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
+            <div className="flex items-center gap-2 font-bold text-xl text-brand-600">
+              <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-black">V+</div>
+              VALORA PLUS ACADEMY
+            </div>
+            <button
+              onClick={() => setShowTutorials(false)}
+              className="px-6 py-2 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-black transition-all"
+            >
+              Volver al Inicio
+            </button>
+          </header>
+          <main className="flex-1 overflow-y-auto p-8">
+            <div className="max-w-7xl mx-auto">
+              <Tutorials />
+            </div>
+          </main>
+        </div>
+      );
+    }
+
     // Default: Show Landing Page
     return (
       <LandingPage
@@ -143,6 +166,7 @@ const App = () => {
         onSignupClick={() => setShowAuth('signup')}
         onClientLoginClick={() => setShowAuth('client_login')}
         onClientSignupClick={() => setShowAuth('client_signup')}
+        onTutorialsClick={() => setShowTutorials(true)}
       />
     );
   }
@@ -179,14 +203,14 @@ const App = () => {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
 
-                {/* RECEPTION & APPRAISAL - Admin, Staff or Client */}
+                {/* RECEPTION & APPRAISAL - Now Client Facing only */}
                 <Route path="/reception" element={
-                  <ProtectedRoleRoute allowedRoles={['Admin', 'Admin_Staff', 'Client']} activeRole={activeRole as AppRole}>
+                  <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
                     <SmartReception />
                   </ProtectedRoleRoute>
                 } />
                 <Route path="/new-appraisal" element={
-                  <ProtectedRoleRoute allowedRoles={['Admin', 'Admin_Staff', 'Client']} activeRole={activeRole as AppRole}>
+                  <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
                     <SmartReception />
                   </ProtectedRoleRoute>
                 } />
@@ -209,32 +233,31 @@ const App = () => {
                   </ProtectedRoleRoute>
                 } />
 
-                {/* WORKSHOP KANBAN - Admin or Operator */}
+                {/* WORKSHOP KANBAN - Now Client Facing */}
                 <Route path="/kanban" element={
-                  <ProtectedRoleRoute allowedRoles={['Admin', 'Operator']} activeRole={activeRole as AppRole}>
+                  <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
                     <RepairKanban />
                   </ProtectedRoleRoute>
                 } />
                 <Route path="/expediente/:id" element={<ExpedienteDetail />} />
 
-                {/* ADMIN ONLY TOOLS */}
-                <Route path="/calculator" element={
-                  <ProtectedRoleRoute allowedRoles={['Admin']} activeRole={activeRole as AppRole}>
-                    <CostCalculator />
-                  </ProtectedRoleRoute>
-                } />
                 <Route path="/history-ot" element={
-                  <ProtectedRoleRoute allowedRoles={['Admin']} activeRole={activeRole as AppRole}>
+                  <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
                     <OTHistory />
                   </ProtectedRoleRoute>
                 } />
                 <Route path="/analytics" element={
-                  <ProtectedRoleRoute allowedRoles={['Admin']} activeRole={activeRole as AppRole}>
+                  <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
                     <Analytics />
                   </ProtectedRoleRoute>
                 } />
+                <Route path="/calculator" element={
+                  <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
+                    <CostCalculator />
+                  </ProtectedRoleRoute>
+                } />
                 <Route path="/client-area" element={
-                  <ProtectedRoleRoute allowedRoles={['Admin']} activeRole={activeRole as AppRole}>
+                  <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
                     <ClientArea />
                   </ProtectedRoleRoute>
                 } />

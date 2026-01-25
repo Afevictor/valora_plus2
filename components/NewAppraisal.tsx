@@ -70,6 +70,7 @@ const NewAppraisal: React.FC = () => {
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
+    const aiScanInputRef = useRef<HTMLInputElement>(null);
 
     // Inicialización
     useEffect(() => {
@@ -176,23 +177,27 @@ const NewAppraisal: React.FC = () => {
         setStagedFiles(prev => prev.filter(f => f.id !== id));
     };
 
-    const runSmartAnalysis = async () => {
-        const photos = stagedFiles.filter(f => f.type === 'image');
-        if (photos.length === 0) return;
+    const runSmartAnalysis = async (specificFiles?: StagedFile[]) => {
+        const analyzeableFiles = (specificFiles || stagedFiles).filter(f => f.type === 'image' || f.type === 'pdf');
+        if (analyzeableFiles.length === 0) return;
         setIsAnalyzing(true);
 
         try {
-            const base64Images = await Promise.all(photos.map(async (staged) => {
+            const filePayloads = await Promise.all(analyzeableFiles.map(async (staged) => {
                 const response = await fetch(staged.preview);
                 const blob = await response.blob();
-                return new Promise<string>((resolve) => {
+                const base64 = await new Promise<string>((resolve) => {
                     const reader = new FileReader();
                     reader.onloadend = () => resolve(reader.result as string);
                     reader.readAsDataURL(blob);
                 });
+                return {
+                    data: base64,
+                    mimeType: staged.file.type
+                };
             }));
 
-            const result = await analyzeVehicleReceptionBatch(base64Images);
+            const result = await analyzeVehicleReceptionBatch(filePayloads);
             if (result && result.data) {
                 setVehicleData(prev => ({
                     ...prev,
@@ -202,12 +207,48 @@ const NewAppraisal: React.FC = () => {
                     brand: result.data.brand || prev.brand,
                     model: result.data.model || prev.model
                 }));
+
+                // Auto-classify files if classifications provided
+                if (result.classification) {
+                    Object.entries(result.classification).forEach(([category, fileIndex]) => {
+                        const idx = fileIndex as number;
+                        const targetFile = analyzeableFiles[idx];
+                        if (targetFile) {
+                            updateFileCategory(targetFile.id, category);
+                        }
+                    });
+                }
             }
         } catch (e) {
             console.error("Error en Análisis Inteligente", e);
         } finally {
             setIsAnalyzing(false);
         }
+    };
+
+    const handleDirectAiScan = async (files: FileList | null) => {
+        if (!files || files.length === 0) return;
+
+        // 1. Convert to StagedFile format
+        const newStaged: StagedFile[] = Array.from(files).map(file => {
+            const isImage = file.type.startsWith('image/');
+            const isPdf = file.type === 'application/pdf';
+
+            return {
+                id: Math.random().toString(36).substring(7),
+                file,
+                preview: URL.createObjectURL(file),
+                category: isPdf ? 'Ficha Técnica' : 'Bastidor (VIN)', // Sensible defaults
+                bucket: isImage ? 'evidence_photos' : 'documents',
+                type: isImage ? 'image' : isPdf ? 'pdf' : 'other'
+            };
+        });
+
+        // 2. Add to the overall files list so they are saved
+        setStagedFiles(prev => [...prev, ...newStaged]);
+
+        // 3. Immediately run analysis on these specific files
+        await runSmartAnalysis(newStaged);
     };
 
     const handleSubmit = async () => {
@@ -218,29 +259,18 @@ const NewAppraisal: React.FC = () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error("No autorizado");
 
+            // 0. Ensure we have the correct Workshop ID (Tenant)
+            // If the user is a Client, they should be submitting to the Workshop's account
+            let targetWorkshopId = user.id;
+            const { data: profile } = await supabase.from('company_profile').select('workshop_id').limit(1).maybeSingle();
+            if (profile?.workshop_id) {
+                targetWorkshopId = profile.workshop_id;
+            }
+
             const dbId = crypto.randomUUID();
             const vehicleId = crypto.randomUUID();
 
-            // 1. Subir archivos en espera
-            for (const staged of stagedFiles) {
-                const filename = `${Date.now()}_${staged.file.name.replace(/\s/g, '_')}`;
-                const storagePath = `${user.id}/${dbId}/${staged.category.replace(/\s/g, '_') || 'General'}/${filename}`;
-                const uploadedPath = await uploadWorkshopFile(staged.file, staged.bucket, storagePath);
-                if (uploadedPath) {
-                    await saveFileMetadata({
-                        workshop_id: user.id,
-                        expediente_id: dbId,
-                        original_filename: staged.file.name,
-                        category: staged.category,
-                        storage_path: uploadedPath,
-                        bucket: staged.bucket,
-                        mime_type: staged.file.type,
-                        size_bytes: staged.file.size
-                    });
-                }
-            }
-
-            // 2. Guardar Vehículo
+            // 1. Guardar Vehículo
             await saveVehicle({
                 id: vehicleId,
                 clientId: selectedClient.id,
@@ -255,7 +285,7 @@ const NewAppraisal: React.FC = () => {
                 color: 'Blanco'
             });
 
-            // 3. Guardar Orden de Trabajo
+            // 2. Guardar Orden de Trabajo (Save parent first to avoid FK issues)
             const newOrder: WorkOrder = {
                 id: dbId,
                 expedienteId: tempTicketId,
@@ -278,6 +308,27 @@ const NewAppraisal: React.FC = () => {
             };
 
             await saveWorkOrderToSupabase(newOrder);
+
+            // 3. Subir archivos y guardar metadatos vinculados
+            for (const staged of stagedFiles) {
+                const filename = `${Date.now()}_${staged.file.name.replace(/\s/g, '_')}`;
+                // Use targetWorkshopId to ensure Admin can see files in Storage if RLS is on
+                const storagePath = `${targetWorkshopId}/${dbId}/${staged.category.replace(/\s/g, '_') || 'General'}/${filename}`;
+                const uploadedPath = await uploadWorkshopFile(staged.file, staged.bucket, storagePath);
+
+                if (uploadedPath) {
+                    await saveFileMetadata({
+                        workshop_id: targetWorkshopId, // CRITICAL: Save under Workshop Owner ID
+                        expediente_id: dbId,
+                        original_filename: staged.file.name,
+                        category: staged.category,
+                        storage_path: uploadedPath,
+                        bucket: staged.bucket,
+                        mime_type: staged.file.type,
+                        size_bytes: staged.file.size
+                    });
+                }
+            }
 
             if (activeRole === 'Client') {
                 alert("¡Su solicitud de reparación se ha enviado correctamente!");
@@ -303,7 +354,7 @@ const NewAppraisal: React.FC = () => {
                 <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-black text-slate-400 font-mono tracking-tighter">{tempTicketId}</span>
                 </div>
-                <h1 className="text-2xl font-bold text-slate-900">{activeRole === 'Client' ? 'Nueva Solicitud de Reparación' : 'Nueva Entrada a Taller'}</h1>
+                <h1 className="text-2xl font-bold text-slate-900">{activeRole === 'Client' ? 'New Request' : 'Nueva Entrada a Taller'}</h1>
                 <div className="flex items-center gap-2 mt-4">
                     {activeRole !== 'Client' && <div className={`h-2 w-12 rounded-full transition-colors ${step >= 1 ? 'bg-brand-600' : 'bg-slate-200'}`}></div>}
                     <div className={`h-2 w-12 rounded-full transition-colors ${step >= 2 ? (activeRole === 'Client' ? 'bg-emerald-500' : 'bg-brand-600') : 'bg-slate-200'}`}></div>
@@ -327,15 +378,41 @@ const NewAppraisal: React.FC = () => {
                         value={searchTerm}
                         onChange={handleClientSearch}
                     />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {filteredClients.slice(0, 6).map(client => (
-                            <div key={client.id} onClick={() => handleSelectClient(client)} className="p-4 rounded-xl border cursor-pointer hover:bg-brand-50 transition-all flex items-center gap-4 group">
-                                <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center font-bold text-brand-600 group-hover:bg-brand-600 group-hover:text-white transition-colors">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                        {filteredClients.length === 0 && (
+                            <div className="col-span-full py-8 text-center text-slate-400 italic">
+                                No se han encontrado resultados para "{searchTerm}"
+                            </div>
+                        )}
+                        {filteredClients.map(client => (
+                            <div key={client.id} onClick={() => handleSelectClient(client)} className="p-4 rounded-xl border cursor-pointer hover:bg-brand-50 transition-all flex items-center gap-4 group bg-white shadow-sm hover:border-brand-300">
+                                <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center font-bold text-brand-600 group-hover:bg-brand-600 group-hover:text-white transition-colors flex-shrink-0">
                                     {client.name.charAt(0)}
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <h3 className="font-bold text-slate-800 truncate">{client.name}</h3>
-                                    <p className="text-xs text-slate-500">{client.phone}</p>
+                                    <div className="flex flex-col gap-0.5">
+                                        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                                            <p className="text-xs text-slate-500 flex items-center gap-1">
+                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                                                {client.phone}
+                                            </p>
+                                            {client.email && (
+                                                <p className="text-xs text-slate-400 flex items-center gap-1 truncate">
+                                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                                    {client.email}
+                                                </p>
+                                            )}
+                                        </div>
+                                        {client.taxId && (
+                                            <p className="text-[10px] text-slate-400 font-mono">
+                                                ID: {client.taxId}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <svg className="w-5 h-5 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                                 </div>
                             </div>
                         ))}
@@ -435,7 +512,7 @@ const NewAppraisal: React.FC = () => {
 
                                 <div className="mt-8 pt-6 border-t border-slate-100 flex justify-end gap-3">
                                     <button
-                                        onClick={runSmartAnalysis}
+                                        onClick={() => runSmartAnalysis()}
                                         disabled={isAnalyzing || stagedFiles.filter(f => f.type === 'image').length === 0}
                                         className="px-6 py-3 rounded-xl border border-indigo-200 text-indigo-700 font-bold text-sm hover:bg-indigo-50 flex items-center gap-2 disabled:opacity-50"
                                     >
@@ -465,23 +542,59 @@ const NewAppraisal: React.FC = () => {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-2">Identificación del Vehículo</h3>
+                        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6 relative overflow-hidden">
+                            <div className="flex justify-between items-center border-b pb-2">
+                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Vehicle Identification</h3>
+                                <div className="flex gap-2">
+                                    <input
+                                        ref={aiScanInputRef}
+                                        type="file"
+                                        accept="image/*,application/pdf"
+                                        className="hidden"
+                                        onChange={(e) => handleDirectAiScan(e.target.files)}
+                                    />
+                                    <button
+                                        onClick={() => aiScanInputRef.current?.click()}
+                                        disabled={isAnalyzing}
+                                        className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase transition-all bg-emerald-500 text-white hover:bg-emerald-600 shadow-md shadow-emerald-200"
+                                    >
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                        Upload & Read
+                                    </button>
+                                    <button
+                                        onClick={() => runSmartAnalysis()}
+                                        disabled={isAnalyzing || stagedFiles.length === 0}
+                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase transition-all ${isAnalyzing ? 'bg-indigo-100 text-indigo-400 animate-pulse' : 'bg-indigo-500 text-white hover:bg-indigo-600 shadow-md shadow-indigo-200'}`}
+                                    >
+                                        {isAnalyzing ? (
+                                            <>
+                                                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                                Scanning...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                                Re-Scan All
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="col-span-2">
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Matrícula</label>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">License Plate</label>
                                     <input type="text" className="w-full p-3 border rounded-xl font-mono font-black text-lg bg-slate-50 uppercase focus:ring-2 focus:ring-emerald-500" value={vehicleData.plate} onChange={e => setVehicleData({ ...vehicleData, plate: e.target.value })} />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Marca</label>
-                                    <input type="text" className="w-full p-2 border rounded-lg font-bold text-slate-700" value={vehicleData.brand} onChange={e => setVehicleData({ ...vehicleData, brand: e.target.value })} />
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Mileage</label>
+                                    <input type="number" className="w-full p-2 border rounded-lg font-bold text-slate-700" value={vehicleData.km === 0 ? '' : vehicleData.km} onChange={e => setVehicleData({ ...vehicleData, km: parseInt(e.target.value) || 0 })} />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Modelo</label>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Model</label>
                                     <input type="text" className="w-full p-2 border rounded-lg font-bold text-slate-700" value={vehicleData.model} onChange={e => setVehicleData({ ...vehicleData, model: e.target.value })} />
                                 </div>
                                 <div className="col-span-2">
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Nº Bastidor (VIN)</label>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">VIN</label>
                                     <input type="text" className="w-full p-2 border rounded-lg font-mono text-sm uppercase" value={vehicleData.vin} onChange={e => setVehicleData({ ...vehicleData, vin: e.target.value })} />
                                 </div>
                             </div>
@@ -499,7 +612,7 @@ const NewAppraisal: React.FC = () => {
                                 disabled={isSaving || !vehicleData.plate}
                                 className={`w-full ${activeRole === 'Client' ? 'bg-emerald-500 hover:bg-emerald-400' : 'bg-brand-500 hover:bg-brand-400'} text-white py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 disabled:opacity-30 transition-all active:scale-95 mt-4`}
                             >
-                                {isSaving ? <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : 'ENVIAR SOLICITUD DE REPARACIÓN'}
+                                {isSaving ? <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : 'SUBMIT REPAIR REQUEST'}
                             </button>
                             {!vehicleData.plate && <p className="text-[10px] text-red-400 text-center font-bold">La matrícula es obligatoria.</p>}
                         </div>

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ValuationRequest, WorkOrder, Client, HourCostCalculation } from '../types';
-import { saveValuationToSupabase, getClientsFromSupabase, getCostCalculations, uploadChatAttachment, saveClientToSupabase, getCompanyProfileFromSupabase } from '../services/supabaseClient';
+import { saveValuationToSupabase, getClientsFromSupabase, getCostCalculations, uploadChatAttachment, saveClientToSupabase, getCompanyProfileFromSupabase, supabase } from '../services/supabaseClient';
 import { getBitrixUsers, BitrixUser, pushValuationToBitrix } from '../services/bitrixService';
 import ClientForm from './ClientForm';
 
@@ -61,51 +61,90 @@ const NewValuation: React.FC = () => {
     const [refreshingUsers, setRefreshingUsers] = useState(false);
     const [showClientModal, setShowClientModal] = useState(false);
 
+    const [isLoadingCosts, setIsLoadingCosts] = useState(false);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
     // Load Data on Mount
     useEffect(() => {
-        const loadData = async () => {
-            // 1. Fetch Company Profile for Workshop Data
-            const profile = await getCompanyProfileFromSupabase();
-            if (profile) {
-                setFormData(prev => ({
-                    ...prev,
-                    workshop: {
-                        name: profile.companyName,
-                        cif: profile.cif,
-                        contact: `${profile.email} - ${profile.phone}`,
-                        province: profile.province
-                    }
-                }));
-            }
+        const loadInitialData = async () => {
+            // 1. Fetch Company Profile
+            getCompanyProfileFromSupabase().then(profile => {
+                if (profile) {
+                    setFormData(prev => ({
+                        ...prev,
+                        workshop: {
+                            name: profile.companyName,
+                            cif: profile.cif,
+                            contact: `${profile.email} - ${profile.phone}`,
+                            province: profile.province
+                        }
+                    }));
+                }
+            });
 
-            // 2. Fetch Bitrix Users (Replces local Experts) - FORCE REFRESH TRUE
-            await handleRefreshBitrixUsers();
+            // 2. Fetch Bitrix Users independently
+            handleRefreshBitrixUsers();
 
-            // 3. Fetch Clients & Insurance Companies
-            const allClients = await getClientsFromSupabase();
-            if (allClients) {
-                setClients(allClients);
-                // Filter for insurance dropdown
-                const insurers = allClients.filter(c => c.clientType === 'Insurance' || c.clientType === 'Company');
-                setInsuranceOptions(insurers);
-            }
+            // 3. Fetch Clients independently
+            getClientsFromSupabase().then(allClients => {
+                if (allClients) {
+                    setClients(allClients);
+                    const insurers = allClients.filter(c => c.clientType === 'Insurance' || c.clientType === 'Company');
+                    setInsuranceOptions(insurers);
+                }
+            });
 
-            // 4. Fetch Cost Calculations
-            const costs = await getCostCalculations();
-            setCostOptions(costs || []);
+            // 4. Fetch Cost Calculations independently with dedicated loader
+            fetchCosts();
         };
-        loadData();
+
+        loadInitialData();
     }, []);
+
+    const fetchCosts = async (clientId?: string) => {
+        setIsLoadingCosts(true);
+        try {
+            console.log(`NewValuation: Fetching all available cost calculations...`);
+            const costs = await getCostCalculations(); // Broad fetch
+
+            if (costs && costs.length > 0) {
+                console.log(`NewValuation: Found ${costs.length} records in total.`);
+                setCostOptions(costs);
+
+                // If a clientId is provided, prioritize it
+                if (clientId) {
+                    const clientRecord = costs.find(c => c.workshop_id === clientId);
+                    if (clientRecord) {
+                        setFormData(prev => ({ ...prev, costReference: clientRecord.periodo }));
+                    }
+                }
+            } else {
+                console.warn("NewValuation: No calculations found.");
+                setCostOptions([]);
+            }
+        } catch (err) {
+            console.error("NewValuation: Error loading costs:", err);
+            setCostOptions([]);
+        } finally {
+            setIsLoadingCosts(false);
+            setStatusMessage('');
+        }
+    };
 
     const handleRefreshBitrixUsers = async () => {
         setRefreshingUsers(true);
-        const bUsers = await getBitrixUsers(true); // Force Refresh
-        if (bUsers.length > 0) {
-            setBitrixUsers(bUsers);
-            setIsBitrixConnected(true);
-        } else {
+        try {
+            const bUsers = await getBitrixUsers(true);
+            if (bUsers.length > 0) {
+                setBitrixUsers(bUsers);
+                setIsBitrixConnected(true);
+            } else {
+                setIsBitrixConnected(false);
+                setBitrixUsers([]);
+            }
+        } catch (e) {
+            console.error("Error refreshing Bitrix users:", e);
             setIsBitrixConnected(false);
-            setBitrixUsers([]);
         }
         setRefreshingUsers(false);
     };
@@ -137,6 +176,11 @@ const NewValuation: React.FC = () => {
                         insuranceCompany: linkedJob.insurance?.company || '',
                         claimDate: linkedJob.entryDate, // Default to entry date if unknown
                     }));
+
+                    // Auto-fetch costs if we have a client ID from the OT
+                    if (linkedJob.clientId) {
+                        fetchCosts(linkedJob.clientId);
+                    }
                 }
             }
         }
@@ -146,6 +190,13 @@ const NewValuation: React.FC = () => {
     const [uploadedPhotos, setUploadedPhotos] = useState<File[]>([]);
     const [uploadedVideo, setUploadedVideo] = useState<File | null>(null);
     const [uploadedDocs, setUploadedDocs] = useState<File[]>([]);
+
+    // Auto-refresh costs when entering step 2
+    useEffect(() => {
+        if (step === 2 && costOptions.length === 0) {
+            fetchCosts();
+        }
+    }, [step]);
 
     const handleInputChange = (section: string, field: string, value: any) => {
         if (section === 'root') {
@@ -166,6 +217,8 @@ const NewValuation: React.FC = () => {
                 ...prev,
                 insuredName: selected.name,
             }));
+            // Refresh cost calculations for this specific client
+            fetchCosts(selected.id);
         }
     };
 
@@ -510,24 +563,76 @@ const NewValuation: React.FC = () => {
 
                                 {/* COST CALCULATION REFERENCE FIELD */}
                                 <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                    <label className="block text-sm font-bold text-yellow-800 mb-2">Referencia de Cálculo de Costes <span className="text-red-500">*</span></label>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <label className="block text-sm font-bold text-yellow-800">Referencia de Cálculo de Costes <span className="text-red-500">*</span></label>
+                                        <button
+                                            onClick={() => fetchCosts()}
+                                            disabled={isLoadingCosts}
+                                            className="text-xs text-yellow-600 hover:text-yellow-800 flex items-center gap-1 font-bold bg-white px-2 py-1 rounded border border-yellow-200 shadow-sm"
+                                        >
+                                            <svg className={`w-3 h-3 ${isLoadingCosts ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                            Sincronizar
+                                        </button>
+                                    </div>
                                     <select
-                                        className="w-full p-2 border border-yellow-300 rounded text-sm focus:ring-2 focus:ring-yellow-500 outline-none"
+                                        className={`w-full p-2 border rounded text-sm outline-none transition-all ${costOptions.length > 0 ? 'border-yellow-300 focus:ring-2 focus:ring-yellow-500' : 'border-red-300 bg-red-50'}`}
                                         value={formData.costReference || ''}
                                         onChange={(e) => handleInputChange('root', 'costReference', e.target.value)}
                                     >
                                         <option value="">-- Seleccionar un Código de Cálculo --</option>
-                                        {costOptions.length > 0 ? (
-                                            costOptions.map((opt: HourCostCalculation) => (
-                                                <option key={opt.periodo} value={opt.periodo}>
-                                                    {opt.periodo} ({(opt.resultado_calculo?.hourlyCost || 0).toFixed(2)}€/h - {new Date(opt.created_at).toLocaleDateString()})
+                                        {costOptions.map((opt: HourCostCalculation) => {
+                                            const owner = clients.find(c => c.id === opt.workshop_id);
+                                            return (
+                                                <option key={opt.id} value={opt.periodo}>
+                                                    {owner ? owner.name : 'Workshop Principal'} - Tarifa {opt.periodo} ({(opt.resultado_calculo?.hourlyCost || 0).toFixed(2)}€/h)
                                                 </option>
-                                            ))
-                                        ) : (
-                                            <option disabled>Aún no hay cálculos de costes guardados.</option>
+                                            );
+                                        })}
+                                        {costOptions.length === 0 && !isLoadingCosts && (
+                                            <option disabled className="text-red-600 font-bold">
+                                                ⚠️ No se encontraron cálculos para este cliente
+                                            </option>
+                                        )}
+                                        {isLoadingCosts && (
+                                            <option disabled>⏳ Consultando base de datos...</option>
                                         )}
                                     </select>
-                                    <p className="text-xs text-yellow-700 mt-1">Debe seleccionar un cálculo de costes válido del módulo Calculadora de Costes.</p>
+                                    <p className="text-xs text-yellow-700 mt-1 mb-4">
+                                        {costOptions.length > 0
+                                            ? 'Cálculos recuperados correctamente.'
+                                            : 'El cliente debe haber completado y guardado su calculadora de costes.'}
+                                    </p>
+
+                                    {/* Visible Cost Summary Block */}
+                                    {formData.costReference && (
+                                        <div className="bg-white border border-yellow-300 rounded-lg p-3 flex justify-between items-center shadow-sm animate-fade-in">
+                                            {(() => {
+                                                const selected = costOptions.find(c => c.periodo === formData.costReference);
+                                                if (!selected) return null;
+                                                const cost = selected.resultado_calculo?.hourlyCost || 0;
+                                                const margin = selected.payload_input?.margin || 0;
+                                                const pvp = cost * (1 + margin / 100);
+                                                return (
+                                                    <>
+                                                        <div className="flex gap-4">
+                                                            <div>
+                                                                <p className="text-[10px] font-black text-slate-400 uppercase">Coste Interno</p>
+                                                                <p className="text-sm font-bold text-slate-700">{cost.toFixed(2)}€/h</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-[10px] font-black text-slate-400 uppercase">Margen</p>
+                                                                <p className="text-sm font-bold text-emerald-600">{margin}%</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[10px] font-black text-emerald-600 uppercase">Precio Sugerido (PVP)</p>
+                                                            <p className="text-lg font-black text-emerald-600">{pvp.toFixed(2)}€/h</p>
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <h4 className="font-bold text-slate-700 mb-3">Datos del Vehículo</h4>

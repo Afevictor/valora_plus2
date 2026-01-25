@@ -14,7 +14,6 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [workshopName, setWorkshopName] = useState('');
-  const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -71,39 +70,13 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
       if (view === 'client_login') {
         onAuthSuccess('Client');
       } else {
-        setView('pin_entry');
+        // Automatically assign Admin role and finish auth
+        onAuthSuccess('Admin');
       }
       setLoading(false);
     }
   };
 
-  const handlePinSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const userId = authenticatedUserId || (await supabase.auth.getUser()).data.user?.id;
-
-    if (!userId || pin.length !== 6) {
-      setError("Sesión de usuario perdida o formato de PIN inválido.");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const role = await verifyPinAndGetRole(userId, pin);
-      if (role) {
-        onAuthSuccess(role);
-      } else {
-        setError("PIN de Acceso Inválido. Acceso Denegado.");
-        setPin('');
-      }
-    } catch (err: any) {
-      const msg = err.message || JSON.stringify(err);
-      setError(`Error de Autenticación: ${msg}`);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,11 +111,10 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
       }
 
       try {
-        await saveUserPins(data.user.id, defaultKeys);
         setAuthenticatedUserId(data.user.id);
-        setView('pin_entry');
+        onAuthSuccess('Admin');
       } catch (err: any) {
-        setError(`Fallo al guardar las claves de seguridad: ${err.message || 'Error desconocido'}`);
+        setError(`Fallo al establecer la sesión: ${err.message || 'Error desconocido'}`);
       } finally {
         setLoading(false);
       }
@@ -223,8 +195,7 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
               view === 'signup' ? 'Crear Cuenta de Taller' :
                 view === 'client_login' ? 'Acceso Cliente' :
                   view === 'client_signup' ? 'Nuevo Cliente' :
-                    view === 'pin_entry' ? 'PIN de Acceso' :
-                      'Recuperar acceso'}
+                    'Recuperar acceso'}
           </h2>
           {view === 'client_signup' && <p className="text-slate-500 mt-2">Complete todos los campos obligatorios.</p>}
         </div>
@@ -242,29 +213,6 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
           </div>
         )}
 
-        {view === 'pin_entry' && (
-          <form onSubmit={handlePinSubmit} className="space-y-6">
-            <div className="flex justify-center">
-              <input
-                type="password"
-                maxLength={6}
-                autoFocus
-                required
-                className="w-48 text-center text-3xl font-black tracking-[0.5em] p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-brand-500 outline-none transition-all"
-                placeholder="000000"
-                value={pin}
-                onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
-              />
-            </div>
-            <button
-              disabled={loading || pin.length !== 6}
-              className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-black transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {loading && <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
-              Autorizar Acceso
-            </button>
-          </form>
-        )}
 
         {view === 'client_login' && (
           <form onSubmit={handleLogin} className="space-y-4 animate-fade-in">

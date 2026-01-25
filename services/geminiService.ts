@@ -80,37 +80,39 @@ export const generateExpertReply = async (
  * 2. Extracts technical data (Plate, VIN, KM).
  */
 export const analyzeVehicleReceptionBatch = async (
-  imagesBase64: string[]
+  files: { data: string; mimeType: string }[]
 ): Promise<{
   data: { plate: string; vin: string; km: number; brand: string; model: string };
-  classification: { [key: string]: number }; // e.g. { "VIN": 2, "Odometer": 0 }
+  classification: { [key: string]: number };
 }> => {
   try {
     const parts: any[] = [];
 
-    // Add all images to the prompt
-    imagesBase64.forEach((img, index) => {
+    // Add all files (Images and PDFs) to the prompt
+    files.forEach((file, index) => {
       // Strip prefix if present
-      const base64Data = img.includes('base64,') ? img.split(',')[1] : img;
+      const base64Data = file.data.includes('base64,') ? file.data.split(',')[1] : file.data;
+      const mime = file.mimeType.startsWith('image/') ? 'image/jpeg' : 'application/pdf';
 
       parts.push({
         inlineData: {
-          mimeType: 'image/jpeg',
+          mimeType: mime,
           data: base64Data
         }
       });
-      parts.push({ text: `[Image_ID_${index}]` });
+      parts.push({ text: `[File_ID_${index}] - Type: ${file.mimeType}` });
     });
 
     parts.push({
       text: `Act as an expert workshop receptionist and OCR system.
-      I have uploaded several photos of a vehicle.
+      I have uploaded several files (photos and documents) of a vehicle.
       
       TASK 1: CLASSIFICATION
-      Identify which [Image_ID_x] best matches each category.
+      Identify which [File_ID_x] best matches each category. Categories: FrontLeft, FrontRight, RearLeft, RearRight, VIN, Odometer, Docs.
       
       TASK 2: DATA EXTRACTION
-      Read the License Plate, VIN, Odometer (KM), and visual Brand/Model.
+      Read the License Plate, VIN, Odometer (KM), and visual Brand/Model from the files.
+      If it's a PDF document (like a registration or quote), prioritize extracting data from it.
       
       RETURN ONLY JSON:
       {

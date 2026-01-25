@@ -206,8 +206,8 @@ const Contacts: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4">
                                         <span className={`px-2 py-1 rounded-full text-xs border ${client.clientType === 'Individual' ? 'bg-slate-50 border-slate-200 text-slate-600' :
-                                                client.clientType === 'Fleet' ? 'bg-orange-50 border-orange-200 text-orange-700' :
-                                                    'bg-purple-50 border-purple-200 text-purple-700'
+                                            client.clientType === 'Fleet' ? 'bg-orange-50 border-orange-200 text-orange-700' :
+                                                'bg-purple-50 border-purple-200 text-purple-700'
                                             }`}>
                                             {getClientTypeLabel(client.clientType)}
                                         </span>

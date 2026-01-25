@@ -13,7 +13,7 @@ import {
 } from '../services/supabaseClient';
 
 const ClientArea: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'profile' | 'staff' | 'security'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'staff'>('profile');
     const [isLoading, setIsLoading] = useState(false);
     const [company, setCompany] = useState<CompanyProfile>({
         companyName: '', cif: '', address: '', city: '', zipCode: '', province: '', email: '', phone: '', costeHora: 0, pvpManoObra: 0
@@ -29,25 +29,17 @@ const ClientArea: React.FC = () => {
         porcentaje_productivo: 100
     });
 
-    // Security Management State
-    const [securityLoading, setSecurityLoading] = useState(false);
-    const [pins, setPins] = useState({ Admin: '', Operator: '', Admin_Staff: '' });
-    const [isEditingPins, setIsEditingPins] = useState(false);
 
     useEffect(() => {
         const loadData = async () => {
             setIsLoading(true);
-            const { data: { user } } = await supabase.auth.getUser();
-
-            const [profile, dbEmployees, dbPins] = await Promise.all([
+            const [profile, dbEmployees] = await Promise.all([
                 getCompanyProfileFromSupabase(),
-                getEmployeesFromSupabase(),
-                user ? getUserPins(user.id) : Promise.resolve(null)
+                getEmployeesFromSupabase()
             ]);
 
             if (profile) setCompany(profile);
             if (dbEmployees) setStaff(dbEmployees);
-            if (dbPins) setPins(dbPins);
 
             setIsLoading(false);
         };
@@ -105,27 +97,6 @@ const ClientArea: React.FC = () => {
         }
     };
 
-    const handleSavePins = async () => {
-        // Basic validation
-        if (pins.Admin.length !== 6 || pins.Operator.length !== 6 || pins.Admin_Staff.length !== 6) {
-            alert("Todos los PINs deben tener exactamente 6 dígitos.");
-            return;
-        }
-
-        setSecurityLoading(true);
-        try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                await saveUserPins(user.id, pins);
-                setIsEditingPins(false);
-                alert("Ajustes de seguridad guardados en Supabase.");
-            }
-        } catch (e) {
-            alert("Error al guardar la configuración de seguridad.");
-        } finally {
-            setSecurityLoading(false);
-        }
-    };
 
     return (
         <div className="max-w-6xl mx-auto p-6">
@@ -136,7 +107,6 @@ const ClientArea: React.FC = () => {
             <div className="border-b border-slate-200 mb-8 flex space-x-8">
                 <button onClick={() => setActiveTab('profile')} className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'profile' ? 'border-brand-500 text-brand-600' : 'border-transparent text-slate-500'}`}>Datos Fiscales</button>
                 <button onClick={() => setActiveTab('staff')} className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'staff' ? 'border-brand-500 text-brand-600' : 'border-transparent text-slate-500'}`}>Equipo y Estructura</button>
-                <button onClick={() => setActiveTab('security')} className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'security' ? 'border-brand-500 text-brand-600' : 'border-transparent text-slate-500'}`}>Seguridad y Acceso</button>
             </div>
 
             {activeTab === 'profile' && (
@@ -258,84 +228,6 @@ const ClientArea: React.FC = () => {
                 </div>
             )}
 
-            {activeTab === 'security' && (
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 animate-fade-in max-w-2xl mx-auto">
-                    <div className="text-center mb-8">
-                        <div className="w-16 h-16 bg-brand-50 rounded-2xl flex items-center justify-center text-brand-600 mx-auto mb-4">
-                            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                        </div>
-                        <h2 className="text-xl font-black text-slate-900">Gestión de Accesos</h2>
-                        <p className="text-slate-500 text-sm mt-1">Gestione los PINs de 6 dígitos almacenados en Supabase para la autenticación por roles.</p>
-                    </div>
-
-                    <div className="space-y-6">
-                        <div className="bg-slate-50 p-8 rounded-3xl space-y-6 shadow-inner border border-slate-100">
-                            <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">PIN Administrador (6 dígitos)</label>
-                                <input
-                                    type="text"
-                                    maxLength={6}
-                                    disabled={!isEditingPins}
-                                    className={`w-full font-mono text-xl p-3 border rounded-xl transition-all ${isEditingPins ? 'bg-white border-brand-300 ring-2 ring-brand-50' : 'bg-slate-100 border-transparent'}`}
-                                    value={pins.Admin}
-                                    onChange={e => setPins({ ...pins, Admin: e.target.value.replace(/\D/g, '') })}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">PIN Operario (6 dígitos)</label>
-                                <input
-                                    type="text"
-                                    maxLength={6}
-                                    disabled={!isEditingPins}
-                                    className={`w-full font-mono text-xl p-3 border rounded-xl transition-all ${isEditingPins ? 'bg-white border-brand-300 ring-2 ring-brand-50' : 'bg-slate-100 border-transparent'}`}
-                                    value={pins.Operator}
-                                    onChange={e => setPins({ ...pins, Operator: e.target.value.replace(/\D/g, '') })}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">PIN Personal (6 dígitos)</label>
-                                <input
-                                    type="text"
-                                    maxLength={6}
-                                    disabled={!isEditingPins}
-                                    className={`w-full font-mono text-xl p-3 border rounded-xl transition-all ${isEditingPins ? 'bg-white border-brand-300 ring-2 ring-brand-50' : 'bg-slate-100 border-transparent'}`}
-                                    value={pins.Admin_Staff}
-                                    onChange={e => setPins({ ...pins, Admin_Staff: e.target.value.replace(/\D/g, '') })}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex gap-4">
-                            {isEditingPins ? (
-                                <>
-                                    <button
-                                        onClick={() => setIsEditingPins(false)}
-                                        className="flex-1 bg-white border border-slate-300 py-4 rounded-xl font-bold hover:bg-slate-50 transition-all"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button
-                                        onClick={handleSavePins}
-                                        disabled={securityLoading}
-                                        className="flex-1 bg-brand-600 text-white py-4 rounded-xl font-black shadow-lg hover:bg-brand-700 transition-all flex items-center justify-center gap-2"
-                                    >
-                                        {securityLoading ? <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : null}
-                                        GUARDAR CAMBIOS
-                                    </button>
-                                </>
-                            ) : (
-                                <button
-                                    onClick={() => setIsEditingPins(true)}
-                                    className="w-full bg-slate-900 text-white py-4 rounded-xl font-black shadow-lg hover:bg-black transition-all flex items-center justify-center gap-3"
-                                >
-                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                    GESTIONAR CLAVES DE ACCESO
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

@@ -8,7 +8,7 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [jobs, setJobs] = useState<RepairJob[]>([]);
-  const [displayName, setDisplayName] = useState('Usuario');
+  const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [activeRole, setActiveRole] = useState<AppRole>('Admin');
   const [stats, setStats] = useState({
@@ -90,17 +90,19 @@ const Dashboard: React.FC = () => {
   };
 
   const isClient = activeRole === 'Client';
-  const canSeeReception = activeRole === 'Admin' || activeRole === 'Admin_Staff' || isClient;
-  const canSeeValuations = activeRole === 'Admin' || activeRole === 'Admin_Staff';
-  const canSeeKanban = activeRole === 'Admin' || activeRole === 'Operator';
+  const canSeeReception = isClient; // Only show 'New Request' to clients on the dashboard
+  const canSeeValuations = !isClient;
+  const canSeeKanban = !isClient;
 
   return (
     <div className="p-6">
       <div className="mb-8 flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Hola, {displayName}</h1>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight uppercase">
+            {isClient ? `Hola, ${displayName}` : 'Administrative Dashboard'}
+          </h1>
           <p className="text-slate-500 font-medium">
-            {isClient ? 'Siga sus reparaciones activas e historial de mantenimiento.' : 'Bienvenido a su centro de control Valora Plus.'}
+            {isClient ? 'Siga sus reparaciones activas e historial de mantenimiento.' : 'Bienvenido al centro de gestión profesional.'}
           </p>
         </div>
         <div className="flex gap-4">
@@ -187,8 +189,8 @@ const Dashboard: React.FC = () => {
                 filteredData.slice(0, 10).map((item) => (
                   <tr
                     key={item.id}
-                    className={`hover:bg-slate-50 transition-colors ${isClient ? '' : 'cursor-pointer'}`}
-                    onClick={() => !isClient && navigate(`/expediente/${item.id}`)}
+                    className="hover:bg-slate-50 transition-colors cursor-pointer"
+                    onClick={() => navigate(`/expediente/${item.id}`)}
                   >
                     <td className="px-6 py-4 font-bold text-slate-700 font-mono">{item.expedienteId || item.id.substring(0, 8)}</td>
                     <td className="px-6 py-4 flex items-center gap-3">
@@ -206,7 +208,7 @@ const Dashboard: React.FC = () => {
                         {getStatusLabel(item.status)}
                       </span>
                     </td>
-                    {!isClient && <td className="px-6 py-4 text-brand-600 font-medium hover:underline">Ver detalles</td>}
+                    <td className="px-6 py-4 text-brand-600 font-medium hover:underline">Ver detalles</td>
                   </tr>
                 ))
               ) : !isLoading && (
