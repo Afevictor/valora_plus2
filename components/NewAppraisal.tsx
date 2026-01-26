@@ -16,17 +16,17 @@ import ClientForm from './ClientForm';
 
 // Categorías con mapeos de buckets
 const FILE_CATEGORIES = [
-    { id: 'Daño Frontal', bucket: 'evidence_photos' },
-    { id: 'Daño Trasero', bucket: 'evidence_photos' },
-    { id: 'Daño Izquierdo', bucket: 'evidence_photos' },
-    { id: 'Daño Derecho', bucket: 'evidence_photos' },
-    { id: 'Bastidor (VIN)', bucket: 'evidence_photos' },
-    { id: 'Kilometraje', bucket: 'evidence_photos' },
-    { id: 'Video General', bucket: 'videos' },
-    { id: 'Ficha Técnica', bucket: 'documents' },
-    { id: 'Póliza Seguro', bucket: 'documents' },
-    { id: 'Factura', bucket: 'documents' },
-    { id: 'Otros', bucket: 'documents' }
+    { id: 'Daño Frontal', bucket: 'reception-files' },
+    { id: 'Daño Trasero', bucket: 'reception-files' },
+    { id: 'Daño Izquierdo', bucket: 'reception-files' },
+    { id: 'Daño Derecho', bucket: 'reception-files' },
+    { id: 'Bastidor (VIN)', bucket: 'reception-files' },
+    { id: 'Kilometraje', bucket: 'reception-files' },
+    { id: 'Video General', bucket: 'reception-files' },
+    { id: 'Ficha Técnica', bucket: 'reception-files' },
+    { id: 'Póliza Seguro', bucket: 'reception-files' },
+    { id: 'Factura', bucket: 'reception-files' },
+    { id: 'Otros', bucket: 'reception-files' }
 ];
 
 interface StagedFile {
@@ -59,6 +59,7 @@ const NewAppraisal: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [previewFile, setPreviewFile] = useState<StagedFile | null>(null);
     const [tempTicketId] = useState(`OT-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`);
+    const [workshopOwnerId, setWorkshopOwnerId] = useState<string | null>(null);
 
     // Detalles de Reparación
     const [repairDetails, setRepairDetails] = useState({
@@ -77,26 +78,35 @@ const NewAppraisal: React.FC = () => {
         const role = sessionStorage.getItem('vp_active_role') as AppRole;
         setActiveRole(role);
 
-        if (role === 'Client') {
-            handleAutoClientLoad();
-        } else {
-            loadClients();
-        }
-    }, []);
+        const loadInitData = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
 
-    const handleAutoClientLoad = async () => {
-        setLoadingClients(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-            const allClients = await getClientsFromSupabase();
-            const current = allClients.find(c => c.id === user.id);
-            if (current) {
-                setSelectedClient(current);
-                setStep(2); // Salto directo a subidas
+            if (role === 'Client') {
+                // If it's a client, they only see themselves as the "client"
+                const { data: clientRecord } = await supabase.from('clients')
+                    .select('*')
+                    .eq('id', user.id)
+                    .maybeSingle();
+
+                if (clientRecord) {
+                    setSelectedClient(clientRecord);
+                    setWorkshopOwnerId(clientRecord.workshop_id);
+                    console.log("Client context loaded. Target Workshop:", clientRecord.workshop_id);
+                    setStep(2); // Salto directo a subidas
+                } else {
+                    console.warn("Client record not found in DB for user:", user.id);
+                    // Fallback to user.id if no workshop link found, though this might cause visibility issues for Admin
+                    setWorkshopOwnerId(user.id);
+                }
+            } else {
+                // Admin context: the owner is the user themselves
+                setWorkshopOwnerId(user.id);
+                getClientsFromSupabase().then(setClients);
             }
-        }
-        setLoadingClients(false);
-    };
+        };
+        loadInitData();
+    }, [activeRole]);
 
     const loadClients = async () => {
         setLoadingClients(true);
@@ -138,17 +148,14 @@ const NewAppraisal: React.FC = () => {
             const isVideo = file.type.startsWith('video/');
             const isPdf = file.type === 'application/pdf';
 
-            let bucket = 'documents';
+            const bucket = 'reception-files'; // Unified bucket for all reception data
             let type: 'image' | 'pdf' | 'video' | 'other' = 'other';
 
             if (isImage) {
-                bucket = 'evidence_photos';
                 type = 'image';
             } else if (isVideo) {
-                bucket = 'videos';
                 type = 'video';
             } else if (isPdf) {
-                bucket = 'documents';
                 type = 'pdf';
             }
 
@@ -252,25 +259,29 @@ const NewAppraisal: React.FC = () => {
     };
 
     const handleSubmit = async () => {
-        if (!selectedClient) return;
+        console.log("[SUBMIT] Starting submission process...");
+        if (!selectedClient || !workshopOwnerId) {
+            console.error("[SUBMIT] Missing context:", { selectedClient, workshopOwnerId });
+            alert("Error: No se ha podido identificar el taller o el cliente.");
+            return;
+        }
         setIsSaving(true);
 
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error("No autorizado");
+            if (!user) throw new Error("No hay una sesión activa de Supabase.");
 
-            // 0. Ensure we have the correct Workshop ID (Tenant)
-            // If the user is a Client, they should be submitting to the Workshop's account
-            let targetWorkshopId = user.id;
-            const { data: profile } = await supabase.from('company_profile').select('workshop_id').limit(1).maybeSingle();
-            if (profile?.workshop_id) {
-                targetWorkshopId = profile.workshop_id;
-            }
+            console.log("[SUBMIT] User authenticated:", user.email);
+            console.log("[SUBMIT] Targeted Workshop Owner:", workshopOwnerId);
 
-            const dbId = crypto.randomUUID();
-            const vehicleId = crypto.randomUUID();
+            // Robust ID generation
+            const dbId = window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now();
+            const vehicleId = window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now();
+
+            console.log("[SUBMIT] Generated IDs:", { dbId, vehicleId });
 
             // 1. Guardar Vehículo
+            console.log("[SUBMIT] Saving vehicle...");
             await saveVehicle({
                 id: vehicleId,
                 clientId: selectedClient.id,
@@ -285,7 +296,8 @@ const NewAppraisal: React.FC = () => {
                 color: 'Blanco'
             });
 
-            // 2. Guardar Orden de Trabajo (Save parent first to avoid FK issues)
+            // 2. Guardar Orden de Trabajo
+            console.log("[SUBMIT] Saving work order...");
             const newOrder: WorkOrder = {
                 id: dbId,
                 expedienteId: tempTicketId,
@@ -307,38 +319,52 @@ const NewAppraisal: React.FC = () => {
                 lines: []
             };
 
-            await saveWorkOrderToSupabase(newOrder);
+            const woResult = await saveWorkOrderToSupabase(newOrder, workshopOwnerId);
+            if (!woResult.success) throw new Error(`Error al guardar la orden: ${woResult.error}`);
+            console.log("[SUBMIT] Work order saved successfully.");
 
-            // 3. Subir archivos y guardar metadatos vinculados
+            // 3. Subir archivos y guardar metadatos
+            console.log(`[SUBMIT] Processing ${stagedFiles.length} files...`);
             for (const staged of stagedFiles) {
-                const filename = `${Date.now()}_${staged.file.name.replace(/\s/g, '_')}`;
-                // Use targetWorkshopId to ensure Admin can see files in Storage if RLS is on
-                const storagePath = `${targetWorkshopId}/${dbId}/${staged.category.replace(/\s/g, '_') || 'General'}/${filename}`;
+                const timestamp = Date.now();
+                const safeName = staged.file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+                const filename = `${timestamp}_${safeName}`;
+
+                // Simplified storage path to ensure compatibility
+                const storagePath = `${workshopOwnerId}/${dbId}/${filename}`;
+
+                console.log(`[FILE] Uploading ${staged.file.name} to bucket ${staged.bucket}...`);
                 const uploadedPath = await uploadWorkshopFile(staged.file, staged.bucket, storagePath);
 
                 if (uploadedPath) {
+                    console.log(`[FILE] Success! Path: ${uploadedPath}. Saving metadata...`);
                     await saveFileMetadata({
-                        workshop_id: targetWorkshopId, // CRITICAL: Save under Workshop Owner ID
+                        workshop_id: workshopOwnerId,
                         expediente_id: dbId,
                         original_filename: staged.file.name,
-                        category: staged.category,
+                        category: staged.category || 'General',
                         storage_path: uploadedPath,
                         bucket: staged.bucket,
                         mime_type: staged.file.type,
                         size_bytes: staged.file.size
                     });
+                    console.log(`[FILE] Metadata saved.`);
+                } else {
+                    console.error(`[FILE] FAILED to upload ${staged.file.name}`);
+                    // We continue with other files even if one fails
                 }
             }
 
+            console.log("[SUBMIT] All processes completed.");
             if (activeRole === 'Client') {
                 alert("¡Su solicitud de reparación se ha enviado correctamente!");
                 navigate('/');
             } else {
                 navigate('/kanban');
             }
-        } catch (e) {
-            console.error("Error al guardar", e);
-            alert("Error al guardar. Consulte la consola.");
+        } catch (e: any) {
+            console.error("[SUBMIT] CRITICAL ERROR:", e);
+            alert(`Error durante el envío: ${e.message || 'Error desconocido'}`);
         } finally {
             setIsSaving(false);
         }

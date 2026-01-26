@@ -133,15 +133,27 @@ export const getAllWorkshopLaborLogs = async () => {
 // --- Files ---
 export const getFilesForExpediente = async (uuid: string, humanId?: string) => {
     try {
-        let query = supabase.from('workshop_files').select('*');
-        if (humanId) {
-            query = query.or(`expediente_id.eq.${uuid},expediente_id.eq.${humanId}`);
-        } else {
-            query = query.eq('expediente_id', uuid);
-        }
-        const { data, error } = await query;
+        const searchIds = [uuid, humanId].filter(Boolean) as string[];
+        if (searchIds.length === 0) return [];
+
+        console.log(`[DB TRACE] Fetching files for Expediente IDs:`, searchIds);
+
+        // Uses .in for better reliability across UUID and Human ID strings
+        const { data, error } = await supabase
+            .from('workshop_files')
+            .select('*')
+            .in('expediente_id', searchIds);
+
         if (error) throw error;
-        return (data || []).map(f => {
+
+        if (!data || data.length === 0) {
+            console.warn(`[DB TRACE] No files found for IDs:`, searchIds);
+            return [];
+        }
+
+        console.log(`[DB TRACE] Found ${data.length} files in metadata table.`);
+
+        return data.map(f => {
             const { data: { publicUrl } } = supabase.storage.from(f.bucket).getPublicUrl(f.storage_path);
             return { ...f, publicUrl };
         });
@@ -386,14 +398,14 @@ export const getWorkOrdersFromSupabase = async (): Promise<RepairJob[]> => {
 };
 export const getWorkOrder = async (id: string): Promise<RepairJob | null> => { try { const { data, error } = await supabase.from('work_orders').select('*').eq('id', id).single(); if (error) throw error; return data ? (data.raw_data as RepairJob) : null; } catch (e) { return null; } };
 
-export const saveWorkOrderToSupabase = async (wo: WorkOrder) => {
+export const saveWorkOrderToSupabase = async (wo: WorkOrder, explicitWorkshopId?: string) => {
     try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("No authenticated user");
 
         const payload: any = {
             id: wo.id,
-            workshop_id: user.id,
+            workshop_id: explicitWorkshopId || user.id,
             client_id: wo.clientId,
             expediente_id: wo.expedienteId || wo.id,
             status: wo.status,

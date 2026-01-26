@@ -88,6 +88,8 @@ const ExpedienteDetail: React.FC = () => {
                 if (foundJob.clientId) {
                     setClient(cDataList.find(c => c.id === foundJob.clientId) || null);
                 }
+
+                console.log(`[FILES DEBUG] Processed ${fData.length} files for job ${foundJob.id}`);
             }
 
             // Recuperar estado del temporizador
@@ -254,10 +256,19 @@ const ExpedienteDetail: React.FC = () => {
 
     if (!job) return <div className="p-10 text-center text-slate-500">Expediente no encontrado.</div>;
 
-    // Clasificación de Archivos
-    const visualEvidence = files.filter(f => ['evidence_photos', 'videos'].includes(f.bucket));
+    // Clasificación de Archivos (Including the new consolidated bucket)
+    const visualEvidence = files.filter(f =>
+        ['evidence_photos', 'videos'].includes(f.bucket) ||
+        (f.bucket === 'reception-files' && (f.mime_type?.startsWith('image/') || f.mime_type?.startsWith('video/')))
+    );
+
     const valuationReports = files.filter(f => f.category === 'Valuation Report');
-    const systemDocs = files.filter(f => f.bucket === 'documents' && f.category !== 'Valuation Report');
+
+    const systemDocs = files.filter(f =>
+        (f.bucket === 'documents' && f.category !== 'Valuation Report') ||
+        (f.bucket === 'reception-files' && f.mime_type === 'application/pdf')
+    );
+
     const otherDocs = files.filter(f =>
         !visualEvidence.find(v => v.id === f.id) &&
         !valuationReports.find(v => v.id === f.id) &&
@@ -628,7 +639,7 @@ const ExpedienteDetail: React.FC = () => {
                             )}
 
                             {/* Photos Section */}
-                            {visualEvidence.filter(f => f.bucket === 'evidence_photos').length > 0 && (
+                            {visualEvidence.filter(f => f.mime_type?.startsWith('image/')).length > 0 && (
                                 <div>
                                     <div className="flex items-center gap-3 mb-4">
                                         <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
@@ -637,11 +648,11 @@ const ExpedienteDetail: React.FC = () => {
                                             </svg>
                                         </div>
                                         <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">
-                                            Fotografías ({visualEvidence.filter(f => f.bucket === 'evidence_photos').length})
+                                            Fotografías ({visualEvidence.filter(f => f.mime_type?.startsWith('image/')).length})
                                         </h3>
                                     </div>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                                        {visualEvidence.filter(f => f.bucket === 'evidence_photos').map((file) => (
+                                        {visualEvidence.filter(f => f.mime_type?.startsWith('image/')).map((file) => (
                                             <div key={file.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all overflow-hidden group">
                                                 <div className="aspect-square bg-slate-100 relative overflow-hidden">
                                                     <img
@@ -683,7 +694,7 @@ const ExpedienteDetail: React.FC = () => {
                             )}
 
                             {/* Videos Section */}
-                            {visualEvidence.filter(f => f.bucket === 'videos').length > 0 && (
+                            {visualEvidence.filter(f => f.mime_type?.startsWith('video/')).length > 0 && (
                                 <div>
                                     <div className="flex items-center gap-3 mb-4">
                                         <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
@@ -692,11 +703,11 @@ const ExpedienteDetail: React.FC = () => {
                                             </svg>
                                         </div>
                                         <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">
-                                            Videos ({visualEvidence.filter(f => f.bucket === 'videos').length})
+                                            Videos ({visualEvidence.filter(f => f.mime_type?.startsWith('video/')).length})
                                         </h3>
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {visualEvidence.filter(f => f.bucket === 'videos').map((file) => (
+                                        {visualEvidence.filter(f => f.mime_type?.startsWith('video/')).map((file) => (
                                             <div key={file.id} className="bg-gradient-to-br from-red-50 to-white p-5 rounded-2xl border border-red-200 shadow-sm hover:shadow-md transition-all group">
                                                 <div className="flex items-start justify-between mb-3">
                                                     <div className="flex-1 min-w-0">
