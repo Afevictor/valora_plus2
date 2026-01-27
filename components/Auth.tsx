@@ -181,14 +181,14 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
     <div className={`min-h-screen bg-slate-50 flex flex-col justify-center items-center p-6 font-sans ${view === 'client_signup' ? 'py-12' : ''}`}>
       <button
         onClick={onBackToLanding}
-        className="fixed top-8 left-8 text-slate-500 hover:text-brand-600 flex items-center gap-2 font-semibold transition-colors z-50"
+        className="fixed top-4 left-4 md:top-8 md:left-8 text-slate-500 hover:text-brand-600 flex items-center gap-2 font-semibold transition-colors z-50 bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm md:bg-transparent md:shadow-none"
       >
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-        Volver
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+        <span className="text-sm">Volver</span>
       </button>
 
-      <div className={`w-full ${view === 'client_signup' ? 'max-w-4xl' : 'max-w-md'} bg-white rounded-3xl shadow-xl border border-slate-200 p-10`}>
-        <div className="text-center mb-10">
+      <div className={`w-full ${view === 'client_signup' ? 'max-w-4xl' : 'max-w-md'} bg-white rounded-3xl shadow-xl border border-slate-200 p-6 md:p-10 mt-16 md:mt-0`}>
+        <div className="text-center mb-6 md:mb-10">
           <div className={`w-14 h-14 ${view.includes('client') ? 'bg-emerald-500' : 'bg-brand-600'} rounded-2xl flex items-center justify-center text-white font-black shadow-lg mx-auto mb-6 text-2xl`}>V+</div>
           <h2 className="text-3xl font-black text-slate-900">
             {view === 'login' ? 'Taller' :

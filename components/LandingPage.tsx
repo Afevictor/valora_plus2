@@ -30,8 +30,8 @@ const LandingPage: React.FC<LandingPageProps> = ({
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 bg-brand-600 rounded-2xl flex items-center justify-center text-white font-black shadow-lg shadow-brand-500/20 ring-4 ring-white text-xl transition-transform hover:scale-105">V+</div>
             <div className="flex flex-col">
-              <span className="font-black text-xl tracking-tight leading-none text-slate-900">VALORA PLUS</span>
-              <span className="text-[10px] font-bold text-brand-600 tracking-[0.2em] uppercase mt-1">DMS Intelligence</span>
+              <span className="font-black text-lg md:text-xl tracking-tight leading-none text-slate-900">VALORA PLUS</span>
+              <span className="text-[8px] md:text-[10px] font-bold text-brand-600 tracking-[0.2em] uppercase mt-1 hidden sm:block">DMS Intelligence</span>
             </div>
           </div>
 
@@ -57,18 +57,18 @@ const LandingPage: React.FC<LandingPageProps> = ({
             <div className="h-8 w-[1px] bg-slate-200 mx-2 hidden md:block" />
 
             {/* Client Section - Ultra Visible */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 md:gap-2">
               <button
                 onClick={onClientLoginClick}
-                className="text-xs font-black text-slate-500 hover:text-slate-900 uppercase tracking-wider transition-colors px-4 py-2.5 rounded-xl hover:bg-slate-50"
+                className="text-[10px] md:text-xs font-black text-slate-500 hover:text-slate-900 uppercase tracking-wider transition-colors px-2 md:px-4 py-2.5 rounded-xl hover:bg-slate-50"
               >
-                Iniciar Sesión
+                Acceso
               </button>
               <button
                 onClick={onClientSignupClick}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-emerald-600/20 hover:scale-105 active:scale-95 ring-4 ring-white"
+                className="px-4 md:px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-emerald-600/20 hover:scale-105 active:scale-95 ring-2 md:ring-4 ring-white"
               >
-                Registrarse
+                Registro
               </button>
             </div>
           </div>
@@ -76,9 +76,9 @@ const LandingPage: React.FC<LandingPageProps> = ({
       </header>
 
       {/* Hero Section */}
-      <section className="pt-48 pb-32 px-6 relative">
+      <section className="pt-24 md:pt-48 pb-16 md:pb-32 px-4 md:px-6 relative">
         <div className="max-w-7xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-brand-600/10 border border-brand-600/10 text-brand-700 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2em] mb-12 animate-fade-in shadow-sm">
+          <div className="inline-flex items-center gap-2 bg-brand-600/10 border border-brand-600/10 text-brand-700 px-3 md:px-4 py-2 rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-[0.1em] md:tracking-[0.2em] mb-12 animate-fade-in shadow-sm">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-600"></span>
@@ -86,8 +86,8 @@ const LandingPage: React.FC<LandingPageProps> = ({
             Sistema de Taller de Próxima Generación
           </div>
 
-          <h1 className="text-6xl md:text-8xl font-black mb-10 leading-[0.9] tracking-tighter text-slate-900">
-            DOMINIO SOBRE <br />
+          <h1 className="text-4xl sm:text-6xl md:text-8xl font-black mb-10 leading-[1.1] md:leading-[0.9] tracking-tighter text-slate-900 px-4">
+            DOMINIO SOBRE <br className="hidden sm:block" />
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-brand-600 to-indigo-600">CADA COMPONENTE</span>
           </h1>
 
@@ -130,12 +130,12 @@ const LandingPage: React.FC<LandingPageProps> = ({
       </section>
 
       {/* Why Choose Us Section */}
-      <section id="features" className="py-32 relative border-t border-slate-200/50 bg-white/50">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-24 max-w-3xl mx-auto">
+      <section id="features" className="py-16 md:py-32 relative border-t border-slate-200/50 bg-white/50">
+        <div className="max-w-7xl mx-auto px-4 md:px-6">
+          <div className="text-center mb-16 md:mb-24 max-w-3xl mx-auto">
             <span className="text-brand-600 font-black uppercase tracking-widest text-xs mb-4 block">Nuestro Pilar Fundamental</span>
-            <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight mb-6">Valoraciones de Daños Objetivas</h2>
-            <p className="text-xl text-slate-500 font-medium leading-relaxed">
+            <h2 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tight mb-6">Valoraciones de Daños Objetivas</h2>
+            <p className="text-lg md:text-xl text-slate-500 font-medium leading-relaxed">
               Transforme la rentabilidad y eficiencia de su taller con informes periciales independientes que garantizan una valoración justa y precisa.
             </p>
           </div>
@@ -179,7 +179,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
                 color: "cyan"
               }
             ].map((f, idx) => (
-              <div key={idx} className="group p-8 rounded-[32px] bg-white border border-slate-200 hover:border-brand-200 hover:shadow-xl hover:shadow-brand-500/5 transition-all duration-300">
+              <div key={idx} className="group p-6 md:p-8 rounded-[32px] bg-white border border-slate-200 hover:border-brand-200 hover:shadow-xl hover:shadow-brand-500/5 transition-all duration-300">
                 <div className={`w-14 h-14 bg-${f.color}-50 text-${f.color}-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
                   {f.icon}
                 </div>
@@ -189,7 +189,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
             ))}
           </div>
 
-          <div className="mt-20 bg-slate-900 rounded-[40px] p-12 relative overflow-hidden text-center md:text-left">
+          <div className="mt-20 bg-slate-900 rounded-[40px] p-6 md:p-12 relative overflow-hidden text-center md:text-left">
             <div className="absolute top-0 right-0 w-64 h-64 bg-brand-600/20 rounded-full blur-[100px]" />
             <div className="relative z-10 grid md:grid-cols-3 gap-12">
               <div>
