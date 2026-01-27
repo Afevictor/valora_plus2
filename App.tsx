@@ -230,7 +230,7 @@ const App = () => {
                   </ProtectedRoleRoute>
                 } />
                 <Route path="/new-valuation" element={
-                  <ProtectedRoleRoute allowedRoles={['Admin', 'Admin_Staff']} activeRole={activeRole as AppRole}>
+                  <ProtectedRoleRoute allowedRoles={['Admin', 'Admin_Staff', 'Client']} activeRole={activeRole as AppRole}>
                     <NewValuation />
                   </ProtectedRoleRoute>
                 } />

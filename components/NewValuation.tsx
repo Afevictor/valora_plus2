@@ -271,7 +271,7 @@ const NewValuation: React.FC = () => {
 
     const handleSubmit = async () => {
         // VALIDATION
-        if (!formData.assignedExpertId) {
+        if (isBitrixConnected && bitrixUsers.length > 0 && !formData.assignedExpertId) {
             alert("Por favor, seleccione un usuario de Bitrix24 para asignar como perito.");
             return;
         }
@@ -859,6 +859,7 @@ const NewValuation: React.FC = () => {
                                             >
                                                 Comprobar Configuración
                                             </button>
+                                            <span className="text-xs text-orange-600 ml-4 font-bold">Modo Offline Activado</span>
                                         </div>
                                     ) : (
                                         <>
@@ -934,7 +935,7 @@ const NewValuation: React.FC = () => {
                         ) : (
                             <button
                                 onClick={handleSubmit}
-                                disabled={loading || !isBitrixConnected}
+                                disabled={loading}
                                 className="bg-green-600 text-white px-8 py-2 rounded-lg font-bold hover:bg-green-700 shadow-md transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed min-w-[200px] justify-center"
                             >
                                 {loading ? (
