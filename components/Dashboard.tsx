@@ -91,7 +91,7 @@ const Dashboard: React.FC = () => {
 
   const isClient = activeRole === 'Client';
   const canSeeReception = isClient; // Only show 'New Request' to clients on the dashboard
-  const canSeeValuations = !isClient;
+  const canSeeValuations = isClient || activeRole === 'Admin'; // Visible for both now
   const canSeeKanban = !isClient;
 
   return (

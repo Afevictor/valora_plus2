@@ -67,35 +67,59 @@ const NewValuation: React.FC = () => {
     // Load Data on Mount
     useEffect(() => {
         const loadInitialData = async () => {
-            // 1. Fetch Company Profile
-            getCompanyProfileFromSupabase().then(profile => {
-                if (profile) {
+            const { data: { user } } = await supabase.auth.getUser();
+            const role = sessionStorage.getItem('vp_active_role');
+            if (role === 'Client' && user) {
+                setCurrentUserId(user.id);
+                // Pre-fill workshop details from clients table for authentication display
+                const allClients = await getClientsFromSupabase();
+                const me = allClients.find(c => c.id === user.id);
+                if (me) {
                     setFormData(prev => ({
                         ...prev,
-                        workshop: {
-                            name: profile.companyName,
-                            cif: profile.cif,
-                            contact: `${profile.email} - ${profile.phone}`,
-                            province: profile.province
+                        insuredName: me.name,
+                        workshop: { // Workshop in this context means 'Solicitant'
+                            name: me.name,
+                            cif: me.taxId || '',
+                            contact: me.email || '',
+                            province: me.city || ''
                         }
                     }));
+                    fetchCosts(me.id); // Auto fetch costs
                 }
-            });
+            } else {
+                // Admin context
+                getCompanyProfileFromSupabase().then(profile => {
+                    if (profile) {
+                        setFormData(prev => ({
+                            ...prev,
+                            workshop: {
+                                name: profile.companyName,
+                                cif: profile.cif,
+                                contact: `${profile.email} - ${profile.phone}`,
+                                province: profile.province
+                            }
+                        }));
+                    }
+                });
+            }
 
             // 2. Fetch Bitrix Users independently
             handleRefreshBitrixUsers();
 
-            // 3. Fetch Clients independently
-            getClientsFromSupabase().then(allClients => {
-                if (allClients) {
-                    setClients(allClients);
-                    const insurers = allClients.filter(c => c.clientType === 'Insurance' || c.clientType === 'Company');
-                    setInsuranceOptions(insurers);
-                }
-            });
+            // 3. Fetch Clients independently (for Admin dropdown)
+            if (role !== 'Client') {
+                getClientsFromSupabase().then(allClients => {
+                    if (allClients) {
+                        setClients(allClients);
+                        const insurers = allClients.filter(c => c.clientType === 'Insurance' || c.clientType === 'Company');
+                        setInsuranceOptions(insurers);
+                    }
+                });
+            }
 
-            // 4. Fetch Cost Calculations independently with dedicated loader
-            fetchCosts();
+            // 4. Fetch Cost Calculations
+            if (role !== 'Client') fetchCosts();
         };
 
         loadInitialData();
@@ -113,9 +137,13 @@ const NewValuation: React.FC = () => {
 
                 // If a clientId is provided, prioritize it
                 if (clientId) {
-                    const clientRecord = costs.find(c => c.workshop_id === clientId);
-                    if (clientRecord) {
-                        setFormData(prev => ({ ...prev, costReference: clientRecord.periodo }));
+                    // Filter for this workshop/client
+                    const clientRecords = costs.filter(c => c.workshop_id === clientId);
+                    if (clientRecords.length > 0) {
+                        // Sort by created_at desc (assuming standard ordering or logic) - actually just take the first if getCostCalculations orders it
+                        // The existing getCostCalculations orders by created_at desc already
+                        const latest = clientRecords[0];
+                        setFormData(prev => ({ ...prev, costReference: latest.periodo }));
                     }
                 }
             } else {
@@ -279,8 +307,12 @@ const NewValuation: React.FC = () => {
             alert("Por favor, especifique el cliente (Nombre del Asegurado).");
             return;
         }
-        if (!formData.costReference) {
+        if (!formData.costReference && !currentUserId) {
             alert("Debe seleccionar una referencia de cálculo de costes.");
+            return;
+        }
+        if (!formData.costReference && currentUserId) {
+            alert("No se encontró una Calculadora de Costes activa. Por favor, guarde una configuración en el menú 'Calculadora'.");
             return;
         }
         // Validate Opposing Vehicle
@@ -501,48 +533,51 @@ const NewValuation: React.FC = () => {
                             <div className="animate-fade-in">
                                 <h3 className="text-lg font-bold text-slate-800 mb-6 border-b pb-2">2. Datos del Siniestro y Vehículo</h3>
 
-                                {/* CLIENT SELECTION DROPDOWN */}
-                                <div className="mb-6 bg-slate-50 p-6 rounded-lg border border-slate-200">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <label className="block text-sm font-bold text-slate-800 flex items-center gap-2">
-                                            <svg className="w-4 h-4 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                                            Seleccionar Cliente (Asegurado) <span className="text-red-500">*</span>
-                                        </label>
-                                        <button
-                                            onClick={() => setShowClientModal(true)}
-                                            className="text-xs bg-brand-100 text-brand-700 px-3 py-1.5 rounded-full font-bold hover:bg-brand-200 transition-colors flex items-center gap-1"
-                                        >
-                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                                            Nuevo Cliente
-                                        </button>
-                                    </div>
-                                    <div className="relative">
-                                        <select
-                                            className="w-full p-3 border border-slate-300 rounded-lg text-sm bg-white appearance-none focus:ring-2 focus:ring-brand-500 outline-none"
-                                            onChange={(e) => handleClientSelection(e.target.value)}
-                                            defaultValue=""
-                                        >
-                                            <option value="" disabled>-- Elegir de la Lista de Clientes --</option>
-                                            {clients.map(c => (
-                                                <option key={c.id} value={c.id}>{c.name} ({c.taxId})</option>
-                                            ))}
-                                        </select>
-                                        <div className="absolute right-4 top-3.5 pointer-events-none text-slate-500">
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                {/* CLIENT SELECTION DROPDOWN - Only for Admins */}
+                                {(!currentUserId) && (
+                                    <div className="mb-6 bg-slate-50 p-6 rounded-lg border border-slate-200">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="block text-sm font-bold text-slate-800 flex items-center gap-2">
+                                                <svg className="w-4 h-4 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                                Seleccionar Cliente (Asegurado) <span className="text-red-500">*</span>
+                                            </label>
+                                            <button
+                                                onClick={() => setShowClientModal(true)}
+                                                className="text-xs bg-brand-100 text-brand-700 px-3 py-1.5 rounded-full font-bold hover:bg-brand-200 transition-colors flex items-center gap-1"
+                                            >
+                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                                Nuevo Cliente
+                                            </button>
                                         </div>
+                                        <div className="relative">
+                                            <select
+                                                className="w-full p-3 border border-slate-300 rounded-lg text-sm bg-white appearance-none focus:ring-2 focus:ring-brand-500 outline-none"
+                                                onChange={(e) => handleClientSelection(e.target.value)}
+                                                defaultValue=""
+                                            >
+                                                <option value="" disabled>-- Elegir de la Lista de Clientes --</option>
+                                                {clients.map(c => (
+                                                    <option key={c.id} value={c.id}>{c.name} ({c.taxId})</option>
+                                                ))}
+                                            </select>
+                                            <div className="absolute right-4 top-3.5 pointer-events-none text-slate-500">
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-slate-500 mt-2 ml-1">Al seleccionar un cliente se rellenará automáticamente el Nombre del Asegurado.</p>
                                     </div>
-                                    <p className="text-xs text-slate-500 mt-2 ml-1">Al seleccionar un cliente se rellenará automáticamente el Nombre del Asegurado.</p>
-                                </div>
+                                )}
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Nombre del Asegurado (Cliente) <span className="text-red-500">*</span></label>
                                         <input
                                             type="text"
-                                            className="w-full p-2 border border-slate-300 rounded bg-white"
+                                            className={`w-full p-2 border border-slate-300 rounded bg-white ${currentUserId ? 'bg-slate-100 text-slate-600' : ''}`}
                                             placeholder="Nombre completo o Empresa"
                                             value={formData.insuredName}
                                             onChange={(e) => handleInputChange('root', 'insuredName', e.target.value)}
+                                            readOnly={!!currentUserId}
                                         />
                                     </div>
                                     <div>
