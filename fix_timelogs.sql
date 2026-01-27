@@ -9,6 +9,7 @@ create table if not exists public.labor_logs (
     duration_minutes numeric,
     hourly_rate_snapshot numeric,
     calculated_labor_cost numeric,
+    workshop_id uuid default auth.uid(),
     created_at timestamptz default now()
 );
 
