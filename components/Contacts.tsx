@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Client, WorkOrder } from '../types';
 import { getClientsFromSupabase, saveClientToSupabase, deleteClient, saveWorkOrderToSupabase } from '../services/supabaseClient';
 import ClientForm from './ClientForm';
+import ClientActivity from './ClientActivity';
 import { useNavigate } from 'react-router-dom';
 
 const Contacts: React.FC = () => {
@@ -12,6 +13,7 @@ const Contacts: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editingClient, setEditingClient] = useState<Client | undefined>(undefined);
+    const [selectedClientForActivity, setSelectedClientForActivity] = useState<Client | null>(null);
 
     useEffect(() => {
         fetchClients();
@@ -135,6 +137,18 @@ const Contacts: React.FC = () => {
                 />
             )}
 
+            {selectedClientForActivity && (
+                <ClientActivity
+                    client={selectedClientForActivity}
+                    onClose={() => setSelectedClientForActivity(null)}
+                    onEdit={() => {
+                        setEditingClient(selectedClientForActivity);
+                        setSelectedClientForActivity(null);
+                        setShowModal(true);
+                    }}
+                />
+            )}
+
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
@@ -192,7 +206,11 @@ const Contacts: React.FC = () => {
                             )}
 
                             {!loading && filteredClients.map(client => (
-                                <tr key={client.id} className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => handleEdit(client)}>
+                                <tr
+                                    key={client.id}
+                                    className="hover:bg-slate-50 transition-colors cursor-pointer border-l-4 border-transparent hover:border-brand-500"
+                                    onClick={() => setSelectedClientForActivity(client)}
+                                >
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${client.isCompany ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
@@ -228,8 +246,8 @@ const Contacts: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex items-center justify-end gap-3">
-                                            <button className="text-brand-600 hover:underline text-sm font-medium">
-                                                Editar
+                                            <button className="text-brand-600 hover:bg-brand-50 px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all">
+                                                Ver Actividad
                                             </button>
                                             <button
                                                 onClick={(e) => handleDelete(e, client)}

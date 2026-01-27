@@ -22,6 +22,7 @@ import BitrexConfig from './components/BitrexConfig';
 import VehicleDetail from './components/VehicleDetail';
 import LandingPage from './components/LandingPage';
 import ClientAnalysisPortal from './components/ClientAnalysisPortal';
+import Subscription from './components/Subscription';
 import Auth from './components/Auth';
 import { supabase } from './services/supabaseClient';
 import { AppRole } from './types';
@@ -249,6 +250,11 @@ const App = () => {
                 <Route path="/analytics" element={
                   <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
                     <Analytics />
+                  </ProtectedRoleRoute>
+                } />
+                <Route path="/payment" element={
+                  <ProtectedRoleRoute allowedRoles={['Client', 'Admin']} activeRole={activeRole as AppRole}>
+                    <Subscription />
                   </ProtectedRoleRoute>
                 } />
                 <Route path="/calculator" element={

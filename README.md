@@ -2,19 +2,47 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# Valora Plus
 
-This contains everything you need to run your app locally.
+**Valora Plus** is a platform designed for vehicle repair workshops to improve claims management and understand the real profitability of their repairs. 
 
-View your app in AI Studio: https://ai.studio/apps/drive/1nWrOKt-jbTAha7qJKrLs3sDitC8UItuM
+It is built on two core pillars: **independent damage assessment** and **post-repair profitability analytics**.
 
-## Run Locally
+## Core Pillars
 
-**Prerequisites:**  Node.js
+### 1. Independent Damage Assessment
+Valora Plus provides workshops with independent expert damage assessment reports. 
+- **Workflow:** Workshops upload accident data and photos.
+- **Output:** Within 24 hours, they receive an expert report used to negotiate effectively with insurance companies.
+- **Goal:** Help workshops defend valuations and aim for fair compensation.
+- *Note:* At this stage, only independent/expert/estimated profitability can be calculated.
 
+### 2. Valora Plus Analytics
+Focuses on calculating the **actual profitability** of each repair once the work is completed.
+- **Comparison:** Compares what the insurance company paid (final assessment) vs. real costs (labor, materials, paint).
+- **AI Automation:** Uses AI to extract data automatically from insurer PDFs.
+- **Reporting:** Generates detailed profitability reports (Euros & %) with category breakdowns.
+- **Long-term Goal:** Build a historical profitability database and provide transparency into workshop performance.
+
+## Getting Started
+
+### Prerequisites
+- Node.js
+- Supabase Account
+
+### Run Locally
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+   ```bash
+   npm install
+   ```
+
+2. Set environment variables in `.env.local`:
+   - `GEMINI_API_KEY` (for AI features)
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+
 3. Run the app:
-   `npm run dev`
+   ```bash
+   npm run dev
+   ```

@@ -8,8 +8,10 @@ import {
     deleteWorkOrder,
     uploadWorkshopFile,
     saveFileMetadata,
+    updateWorkOrderFinancials,
     supabase
 } from '../services/supabaseClient';
+import { analyzeProfitabilityDocument } from '../services/geminiService';
 
 const COLUMNS: { id: RepairStage; title: string; color: string }[] = [
     { id: 'reception', title: 'Recepción / Pendiente', color: 'border-gray-300' },
@@ -116,6 +118,42 @@ const RepairKanban: React.FC = () => {
             });
 
             if (!metadataSuccess) throw new Error("Fallo en el registro de metadatos.");
+
+            // 2.5 Extracción Automática de Rentabilidad (PDFs e Imágenes)
+            if (closingFile.type === 'application/pdf' || closingFile.type.startsWith('image/')) {
+                try {
+                    // Convertir a Base64
+                    const base64Data = await new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.readAsDataURL(closingFile);
+                        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+                        reader.onerror = reject;
+                    });
+
+                    console.log("[DEBUG] Base64 Length:", base64Data.length);
+                    console.log("[DEBUG] File Type:", closingFile.type);
+
+                    // Analizar con Gemini
+                    const analysis = await analyzeProfitabilityDocument(base64Data, closingFile.type);
+                    console.log("[DEBUG] AI Analysis Result:", analysis);
+
+                    // Si encontramos un valor, actualizamos
+                    if (analysis.financials.total_gross > 0) {
+                        await updateWorkOrderFinancials(closingJob.id, {
+                            insurance_payment: analysis.financials.total_gross,
+                            insurance_payment_status: 'analyzed'
+                        });
+                        console.log("Rentabilidad extraída con éxito:", analysis.financials.total_gross);
+                    } else {
+                        console.warn("ValoraAI: No se encontró importe. Detalles:", analysis.analysis);
+                        await updateWorkOrderFinancials(closingJob.id, {
+                            insurance_payment_status: 'failed_extraction'
+                        });
+                    }
+                } catch (extractionError) {
+                    console.warn("Fallo en la extracción automática, continuando cierre...", extractionError);
+                }
+            }
 
             // 3. Actualizar Estado a Finalizado en DB
             const statusSuccess = await updateWorkOrderStatus(closingJob.id, 'finished');

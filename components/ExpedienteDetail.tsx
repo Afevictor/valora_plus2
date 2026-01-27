@@ -11,6 +11,7 @@ import {
     getLaborLogsForOrder,
     getVehicle,
     getFilesForExpediente,
+    updateWorkOrderStatus,
     supabase
 } from '../services/supabaseClient';
 
@@ -240,6 +241,29 @@ const ExpedienteDetail: React.FC = () => {
         setIsFinishing(false);
     };
 
+    const handleAdvancePhase = async () => {
+        if (!job) return;
+
+        if (window.confirm("¿Avanzar a la siguiente fase? El temporizador actual se detendrá automáticamente.")) {
+            // 1. Auto-Stop Timer
+            if (timer) {
+                await finishTimer();
+            }
+
+            // 2. Advance Status
+            const order = ['reception', 'disassembly', 'bodywork', 'paint', 'finished'];
+            const currentIdx = order.indexOf(job.status || 'reception');
+            if (currentIdx !== -1 && currentIdx < order.length - 1) {
+                const next = order[currentIdx + 1];
+                await updateWorkOrderStatus(job.id, next as any);
+                setJob({ ...job, status: next as any });
+                // Reset phase selector to next logical phase
+                const nextPhaseMap: Record<string, string> = { 'disassembly': 'disassembly', 'bodywork': 'bodywork', 'paint': 'paint' };
+                if (nextPhaseMap[next]) setSelectedPhase(nextPhaseMap[next] as MandatoryPhase);
+            }
+        }
+    };
+
     const formatTime = (seconds: number) => {
         const h = Math.floor(seconds / 3600);
         const m = Math.floor((seconds % 3600) / 60);
@@ -301,6 +325,23 @@ const ExpedienteDetail: React.FC = () => {
                         <span className="bg-slate-200 text-slate-700 px-3 py-1 rounded-lg font-mono font-bold text-sm">{job.plate}</span>
                     </div>
                     <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">ID Expediente: {job.expedienteId || job.id.substring(0, 8)}</p>
+
+                    {/* Phase Controls */}
+                    <div className="mt-4 flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">FASE ACTUAL:</span>
+                            <span className="bg-slate-900 text-white px-3 py-1 rounded text-xs font-black uppercase">{getStatusLabel(job.status)}</span>
+                        </div>
+                        {job.status !== 'finished' && job.status !== 'closed' && (
+                            <button
+                                onClick={handleAdvancePhase}
+                                className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2"
+                            >
+                                Avanzar Fase
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
@@ -367,30 +408,53 @@ const ExpedienteDetail: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="lg:col-span-1 bg-slate-900 rounded-[40px] p-8 text-white shadow-2xl flex flex-col justify-between relative overflow-hidden">
+                            <div className="lg:col-span-1 bg-slate-900 rounded-[40px] p-8 text-white shadow-2xl flex flex-col justify-between relative overflow-hidden ring-4 ring-brand-500/20">
                                 <div className="absolute top-0 right-0 p-8 opacity-5">
                                     <svg className="w-40 h-40" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" /></svg>
                                 </div>
-                                <div>
-                                    <h3 className="text-[10px] font-black text-brand-400 uppercase tracking-[0.3em] mb-6">Resumen Financiero</h3>
-                                    <div className="space-y-6">
-                                        <div>
-                                            <p className="text-slate-500 text-xs font-bold uppercase">Total Estimado</p>
-                                            <p className="text-4xl font-black tabular-nums">€{job.totalAmount?.toFixed(2) || '0.00'}</p>
+                                <div className="space-y-8 relative z-10">
+                                    <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                                        <h3 className="text-[10px] font-black text-brand-400 uppercase tracking-[0.3em]">Resumen Financiero</h3>
+                                        <div className="text-right">
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase">Coste Hora Taller</p>
+                                            <p className="text-white font-mono font-bold">{workshopRate.toFixed(2)} €/h</p>
                                         </div>
-                                        <div className="pt-6 border-t border-white/10">
-                                            <p className="text-slate-500 text-xs font-bold uppercase">Coste MO Registrada</p>
-                                            <p className="text-2xl font-black text-emerald-400 tabular-nums">€{laborLogs.reduce((acc, l) => acc + (l.calculated_labor_cost || 0), 0).toFixed(2)}</p>
-                                        </div>
-                                        <div className="pt-6 border-t border-white/10">
-                                            <p className="text-slate-500 text-xs font-bold uppercase">Aseguradora Asociada</p>
-                                            <p className="text-sm font-bold text-slate-300">{job.insurance?.company || 'Ninguna / Particular'}</p>
+                                    </div>
+
+                                    <div>
+                                        <p className="text-slate-500 text-xs font-bold uppercase mb-1">Total Horas Registradas</p>
+                                        <p className="text-5xl font-black tabular-nums tracking-tighter text-white">
+                                            {(laborLogs.reduce((acc, l) => acc + (l.duration_minutes || 0), 0) / 60).toFixed(2)} <span className="text-lg text-slate-500">h</span>
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <p className="text-slate-500 text-xs font-bold uppercase mb-1">Coste Real Taller (MO)</p>
+                                        <p className="text-4xl font-black tabular-nums tracking-tighter text-emerald-400 bg-emerald-500/10 inline-block px-4 py-2 rounded-lg border border-emerald-500/20">
+                                            €{laborLogs.reduce((acc, l) => acc + (l.calculated_labor_cost || 0), 0).toFixed(2)}
+                                        </p>
+                                        <p className="text-[10px] text-emerald-600 mt-2 font-bold">Calculation: Hours × {workshopRate} €/h</p>
+                                    </div>
+
+                                    <div className="pt-6 border-t border-white/10">
+                                        <div className="flex justify-between items-end">
+                                            <div>
+                                                <p className="text-slate-500 text-xs font-bold uppercase">Estimación Inicial</p>
+                                                <p className="text-xl font-bold text-slate-300">€{job.totalAmount?.toFixed(2) || '0.00'}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-slate-500 text-xs font-bold uppercase">Margen MO</p>
+                                                {(() => {
+                                                    const realCost = laborLogs.reduce((acc, l) => acc + (l.calculated_labor_cost || 0), 0);
+                                                    // Assuming totalAmount includes parts, this logic is simplistic. 
+                                                    // Ideally we filter lines for 'Labor' type. But for now compare to total or 0.
+                                                    // Let's just show Deviation.
+                                                    return <p className="text-xl font-bold text-slate-300">--</p>;
+                                                })()}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                                <button onClick={() => navigate('/history-claims')} className="mt-8 w-full bg-white/10 hover:bg-white/20 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all border border-white/10">
-                                    Gestionar Facturación
-                                </button>
                             </div>
                         </div>
                     </div>
@@ -819,9 +883,12 @@ const ExpedienteDetail: React.FC = () => {
 
                                 <div className="bg-slate-900 rounded-[32px] p-8 text-center shadow-2xl relative overflow-hidden ring-4 ring-slate-100 group">
                                     <p className="text-[10px] font-black text-brand-400 uppercase tracking-[0.4em] mb-3">Tiempo en Sesión</p>
-                                    <h3 className="text-6xl font-mono font-black text-white tabular-nums tracking-tighter mb-6">
+                                    <h3 className="text-6xl font-mono font-black text-white tabular-nums tracking-tighter mb-2">
                                         {formatTime(displaySeconds)}
                                     </h3>
+                                    <p className="text-emerald-400 font-mono font-bold text-xl mb-6">
+                                        Coste Actual: {((displaySeconds / 3600) * workshopRate).toFixed(2)} €
+                                    </p>
                                     <div className="flex gap-4">
                                         {!timer ? (
                                             <button

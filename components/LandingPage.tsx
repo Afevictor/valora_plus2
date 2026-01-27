@@ -62,13 +62,13 @@ const LandingPage: React.FC<LandingPageProps> = ({
                 onClick={onClientLoginClick}
                 className="text-xs font-black text-slate-500 hover:text-slate-900 uppercase tracking-wider transition-colors px-4 py-2.5 rounded-xl hover:bg-slate-50"
               >
-                Login
+                Iniciar Sesión
               </button>
               <button
                 onClick={onClientSignupClick}
                 className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-emerald-600/20 hover:scale-105 active:scale-95 ring-4 ring-white"
               >
-                Register
+                Registrarse
               </button>
             </div>
           </div>
@@ -83,21 +83,21 @@ const LandingPage: React.FC<LandingPageProps> = ({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-600"></span>
             </span>
-            Next-Gen Workshop OS
+            Sistema de Taller de Próxima Generación
           </div>
 
           <h1 className="text-6xl md:text-8xl font-black mb-10 leading-[0.9] tracking-tighter text-slate-900">
-            MASTERY OVER <br />
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-brand-600 to-indigo-600">EVERY COMPONENT</span>
+            DOMINIO SOBRE <br />
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-brand-600 to-indigo-600">CADA COMPONENTE</span>
           </h1>
 
           <p className="max-w-2xl mx-auto text-slate-500 text-lg md:text-xl font-medium leading-relaxed mb-16 px-4">
-            The intelligent link between high-performance <span className="text-slate-900 font-bold underline decoration-brand-500 decoration-4 underline-offset-4">Workshops</span> and their <span className="text-emerald-700 font-bold underline decoration-emerald-500 decoration-4 underline-offset-4">Strategic Partners</span>.
+            El enlace inteligente entre <span className="text-slate-900 font-bold underline decoration-brand-500 decoration-4 underline-offset-4">Talleres</span> de alto rendimiento y sus <span className="text-emerald-700 font-bold underline decoration-emerald-500 decoration-4 underline-offset-4">Socios Estratégicos</span>.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mb-24">
             <button onClick={onClientSignupClick} className="w-full sm:w-auto px-12 py-5 bg-slate-900 text-white rounded-2xl font-black text-lg hover:bg-slate-800 transition-all shadow-2xl shadow-slate-900/20 hover:-translate-y-1 active:scale-95">
-              GET STARTED
+              COMENZAR
             </button>
           </div>
 
@@ -113,8 +113,8 @@ const LandingPage: React.FC<LandingPageProps> = ({
               />
               <div className="absolute bottom-12 left-12 right-12 z-20 flex justify-between items-end">
                 <div className="text-left">
-                  <span className="text-brand-600 text-[10px] font-black uppercase tracking-[0.3em]">Module Active</span>
-                  <h3 className="text-3xl font-black text-slate-900 mt-2 tracking-tight">Real-Time Yield Analytics</h3>
+                  <span className="text-brand-600 text-[10px] font-black uppercase tracking-[0.3em]">Módulo Activo</span>
+                  <h3 className="text-3xl font-black text-slate-900 mt-2 tracking-tight">Análisis de Rentabilidad en Tiempo Real</h3>
                 </div>
                 <div className="bg-white/80 backdrop-blur-md px-6 py-4 rounded-2xl border border-white shadow-xl">
                   <div className="flex gap-4">
@@ -129,42 +129,84 @@ const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
-      {/* Features Grid */}
+      {/* Why Choose Us Section */}
       <section id="features" className="py-32 relative border-t border-slate-200/50 bg-white/50">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+          <div className="text-center mb-24 max-w-3xl mx-auto">
+            <span className="text-brand-600 font-black uppercase tracking-widest text-xs mb-4 block">Our Core Pillar</span>
+            <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight mb-6">Objective Damage Assessments</h2>
+            <p className="text-xl text-slate-500 font-medium leading-relaxed">
+              Transform the profitability and efficiency of your workshop with independent expert reports that guarantee fair and accurate assessment.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
               {
-                title: "Smart Intake",
-                desc: "Extract vehicle DNA with intelligent OCR. License plates, VINs, and mileage—captured instantly.",
-                color: "text-brand-600",
-                bg: "bg-brand-50",
-                icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg>
+                title: "Increased Profitability",
+                desc: "Identify and ensure fair compensation for each repair, increasing your profits by between 5% and 35%. Accuracy translates directly into greater profitability.",
+                icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+                color: "brand"
               },
               {
-                title: "Yield Lab",
-                desc: "Real-time margin calculation and risk identification. Pivot your strategy based on hard data.",
-                color: "text-indigo-600",
-                bg: "bg-indigo-50",
-                icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                title: "Effective Negotiation",
+                desc: "Armed with impartial assessments, you gain greater negotiating power. Obtain appropriate rates and reduce discrepancies with insurance companies.",
+                icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>,
+                color: "indigo"
               },
               {
-                title: "Unified Hub",
-                desc: "A hardened communication link between your workshop floor and insurance experts.",
-                color: "text-emerald-600",
-                bg: "bg-emerald-50",
-                icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>
+                title: "Efficiency & Accuracy",
+                desc: "Receive appraisals in less than 24 hours. Streamline your repair management and significantly improve operational efficiency.",
+                icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+                color: "emerald"
+              },
+              {
+                title: "No Training Required",
+                desc: "Avoid expensive training or software investments. We handle the entire appraisal process using specialized tools and expertise.",
+                icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>,
+                color: "amber"
+              },
+              {
+                title: "Total Independence",
+                desc: "We are experts with NO ties to insurers. Our assessments are 100% impartial and focused solely on your workshop's interests.",
+                icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
+                color: "rose"
+              },
+              {
+                title: "Seamless Integration",
+                desc: "We integrate smoothly into your daily operations with flexible hours and solutions adapted to your existing systems.",
+                icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>,
+                color: "cyan"
               }
             ].map((f, idx) => (
-              <div key={idx} className="group p-10 rounded-[40px] bg-white border border-slate-200 hover:border-brand-200 hover:shadow-2xl hover:shadow-brand-500/5 transition-all duration-500">
-                <div className={`w-16 h-16 ${f.bg} rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform ${f.color}`}>
+              <div key={idx} className="group p-8 rounded-[32px] bg-white border border-slate-200 hover:border-brand-200 hover:shadow-xl hover:shadow-brand-500/5 transition-all duration-300">
+                <div className={`w-14 h-14 bg-${f.color}-50 text-${f.color}-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
                   {f.icon}
                 </div>
-                <h3 className="text-2xl font-black mb-4 tracking-tight text-slate-900">{f.title}</h3>
-                <p className="text-slate-500 leading-relaxed font-medium">{f.desc}</p>
+                <h3 className="text-xl font-black mb-3 tracking-tight text-slate-900">{f.title}</h3>
+                <p className="text-slate-500 leading-relaxed text-sm font-medium">{f.desc}</p>
               </div>
             ))}
           </div>
+
+          <div className="mt-20 bg-slate-900 rounded-[40px] p-12 relative overflow-hidden text-center md:text-left">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-brand-600/20 rounded-full blur-[100px]" />
+            <div className="relative z-10 grid md:grid-cols-3 gap-12">
+              <div>
+                <h4 className="text-brand-400 font-black uppercase tracking-widest text-xs mb-4">Customer Satisfaction</h4>
+                <p className="text-slate-300 font-medium">Improve relationship with insurers and customers through transparency and professional assessments.</p>
+              </div>
+              <div>
+                <h4 className="text-brand-400 font-black uppercase tracking-widest text-xs mb-4">Reduced Disputes</h4>
+                <p className="text-slate-300 font-medium">Minimize disputes and reduce resolution times with grounded, objective reports.</p>
+              </div>
+              <div>
+                <h4 className="text-brand-400 font-black uppercase tracking-widest text-xs mb-4">Resource Maximization</h4>
+                <p className="text-slate-300 font-medium">Free your team from appraisals so they can focus entirely on productive repairs.</p>
+              </div>
+            </div>
+          </div>
+
         </div>
       </section>
 

@@ -162,56 +162,106 @@ export const analyzeVehicleReceptionBatch = async (
 };
 
 export const analyzeProfitabilityDocument = async (base64Data: string, mimeType: string = 'application/pdf') => {
-  // Always use application/pdf for Gemini PDF processing
-  const finalMime = 'application/pdf';
+  console.log("Starting Local Extraction (No AI)...");
 
   try {
-    if (!apiKey) throw new Error("API Key missing");
+    let fullText = "";
 
-    console.log("Analyzing PDF...");
+    // 1. Decodificar Base64
+    const binaryString = atob(base64Data);
 
-    const response = await genAI.models.generateContent({
-      model: 'gemini-1.5-pro',
-      contents: {
-        parts: [
-          { inlineData: { mimeType: finalMime, data: base64Data } },
-          {
-            text: `Extract the summary data from this car repair estimate. 
-            Search for "Totales", "Resumen de Valoración" or "Liquidación".
-            Return ONLY a JSON object:
-            {
-              "vehicle": { "make_model": "string", "plate": "string", "vin": "string", "owner": "string" },
-              "financials": { "total_net": 0, "total_gross": 0, "parts_total": 0, "labor_total": 0, "paint_material_total": 0, "labor_hours": 0, "labor_rate": 0 },
-              "analysis": { "summary": "Spanish summary", "profitability_rating": "Medium" },
-              "metadata": { "file_ref": "string" }
-            }`
-          }
-        ]
-      },
-      config: { responseMimeType: "application/json" }
-    });
+    // 2. Si es PDF, usar PDF.js desde CDN (ESM import)
+    if (mimeType.includes("pdf")) {
+      try {
+        // Importación dinámica de PDF.js
+        const pdfjs = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/+esm');
+        pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
 
-    const text = response.text || "";
-    console.log("AI Response received.");
+        // Cargar documento
+        const loadingTask = pdfjs.getDocument({ data: binaryString });
+        const pdf = await loadingTask.promise;
 
-    const result = JSON.parse(text.includes('{') ? text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1) : text);
+        // Extraer texto de todas las páginas
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map((item: any) => item.str).join(' ');
+          fullText += pageText + "\n";
+        }
+      } catch (pdfError) {
+        console.error("PDF Parsing Error:", pdfError);
+        throw new Error("No se pudo leer el texto del PDF (Bloqueo de seguridad o formato inválido).");
+      }
+    } else {
+      // Si es imagen, no tenemos OCR local. Retornamos error específico.
+      // Nota: Para imágenes se requeriría Tesseract.js pero es muy pesado para inyectar así.
+      throw new Error("La extracción local solo soporta PDFs de texto (no imágenes escaneadas).");
+    }
 
-    return {
-      vehicle: result.vehicle || { make_model: "S/D", plate: "S/D", vin: "S/D", owner: "S/D" },
-      financials: result.financials || { total_net: 0, total_gross: 0, parts_total: 0, labor_total: 0, paint_material_total: 0, labor_hours: 0, labor_rate: 0 },
-      analysis: result.analysis || { summary: "Análisis preliminar generado.", profitability_rating: "Medium" },
-      metadata: result.metadata || { file_ref: "FILE-PREVIEW" }
-    };
+    console.log("Extracted Text Preview:", fullText.substring(0, 200));
+
+    // 3. REGEX LOGIC (La parte clave)
+    // Busca: "asciende a" + espacios + [NUMERO EN FORMATO EUROPEO]
+    // Ejemplo: asciende a 3.732,60
+    const regex = /asciende\s+a\s+([\d.]+,\d{2})/i;
+    const match = fullText.match(regex);
+
+    let totalGross = 0;
+
+    if (match && match[1]) {
+      // Limpieza: "3.732,60" -> "3732.60"
+      // 1. Eliminar puntos de miles
+      let cleanNumber = match[1].replace(/\./g, '');
+      // 2. Cambiar coma decimal por punto
+      cleanNumber = cleanNumber.replace(',', '.');
+
+      totalGross = parseFloat(cleanNumber);
+      console.log("MATCH FOUND:", totalGross);
+    } else {
+      console.warn("Pattern 'asciende a' NOT found in text.");
+    }
+
+    // 4. Retornar estructura estándar
+    if (totalGross > 0) {
+      return {
+        vehicle: { make_model: "Detectado", plate: "S/D", vin: "", owner: "" },
+        financials: { total_gross: totalGross, total_net: totalGross / 1.21 }, // Asumiendo IVA 21% para el neto
+        analysis: { summary: `Extracción local exitosa: ${totalGross}€`, profitability_rating: "High" },
+        metadata: { file_ref: "LOCAL-REGEX" }
+      };
+    } else {
+      return {
+        financials: { total_gross: 0 },
+        analysis: { summary: "No se encontró el patrón 'asciende a [precio]'.", profitability_rating: "Low" }
+      };
+    }
 
   } catch (error) {
-    console.error("Analysis failed, returning fallback draft:", error);
-    // FALLBACK SUCCESS: If analysis fails, we return a blank structure so the user can at least see the report portal
+    console.error("Local Extraction Failed:", error);
+    const msg = error instanceof Error ? error.message : String(error);
     return {
-      vehicle: { make_model: "Pendiente de Revisión", plate: "S/D", vin: "S/D", owner: "Documento en Proceso" },
-      financials: { total_net: 0, total_gross: 0, parts_total: 0, labor_total: 0, paint_material_total: 0, labor_hours: 0, labor_rate: 0 },
-      analysis: { summary: "No se pudo extraer el detalle automático. El documento podría no ser legible o compatible.", profitability_rating: "Medium" },
-      metadata: { file_ref: "MANUAL-REVIEW" }
+      financials: { total_gross: 0 },
+      analysis: { summary: `Error Local: ${msg}` },
     };
   }
 };
 
+// Helper for clean JSON parsing
+const cleanJsonInput = (str: string) => {
+  try {
+    let cleaned = str.replace(/```json/g, "").replace(/```/g, "").trim();
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start !== -1 && end !== -1) cleaned = cleaned.substring(start, end + 1);
+    return JSON.parse(cleaned);
+  } catch (e) {
+    return {};
+  }
+};
+
+const fallbackResult = (reason: string) => ({
+  vehicle: { make_model: "Pendiente", plate: "S/D", vin: "S/D", owner: "Proceso" },
+  financials: { total_net: 0, total_gross: 0, parts_total: 0, labor_total: 0, paint_material_total: 0, labor_hours: 0, labor_rate: 0 },
+  analysis: { summary: `ERROR: ${reason}`, profitability_rating: "Medium" },
+  metadata: { file_ref: "MANUAL-REVIEW" }
+});

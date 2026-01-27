@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ValuationRequest, WorkOrder, Client, HourCostCalculation } from '../types';
-import { saveValuationToSupabase, getClientsFromSupabase, getCostCalculations, uploadChatAttachment, saveClientToSupabase, getCompanyProfileFromSupabase, supabase } from '../services/supabaseClient';
+import { saveValuationToSupabase, getClientsFromSupabase, getCostCalculations, uploadChatAttachment, saveClientToSupabase, getCompanyProfileFromSupabase, logClientActivity, supabase } from '../services/supabaseClient';
 import { getBitrixUsers, BitrixUser, pushValuationToBitrix } from '../services/bitrixService';
 import ClientForm from './ClientForm';
 
@@ -367,6 +367,31 @@ const NewValuation: React.FC = () => {
                 alert("Solicitud de peritación creada localmente, pero falló el envío a Bitrix24. Por favor, compruebe la conexión de Bitrix.");
             }
 
+            // --- STEP 5: LOG TO CENTRAL ACTIVITY FEED (HIGH RELIABILITY) ---
+            console.log("[VALUATION SUBMIT] Logging to global activity feed...");
+            const activityFiles = fileLinks.map(fl => ({
+                url: fl.url,
+                name: fl.url.split('/').pop() || 'Asset',
+                category: fl.type === 'image' ? 'Evidence' : 'Document',
+                type: fl.type === 'image' ? 'image' : 'pdf'
+            }));
+
+            // Find client ID by name fallback if not explicitly linked in formData
+            const matchedClient = clients.find(c => c.name === formData.insuredName);
+
+            await logClientActivity({
+                client_id: matchedClient?.id,
+                plate: formData.vehicle?.plate || '',
+                expediente_id: formData.id || '',
+                activity_type: 'valuation_request',
+                summary: formData.notes || `New valuation request for ${formData.vehicle?.brand} ${formData.vehicle?.model}`,
+                file_assets: activityFiles,
+                raw_data: {
+                    valuation: finalData,
+                    ticketNumber: formData.ticketNumber
+                }
+            });
+
             setStep(5); // Success Screen
         } catch (error) {
             console.error("Submission failed", error);
@@ -638,7 +663,7 @@ const NewValuation: React.FC = () => {
                                 <h4 className="font-bold text-slate-700 mb-3">Datos del Vehículo</h4>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-500 mb-1">Marca</label>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Kilometraje</label>
                                         <input
                                             type="text"
                                             className="w-full p-2 border border-slate-300 rounded text-sm"

@@ -117,6 +117,8 @@ export interface RepairJob {
   entryDate: string;
   priority: 'High' | 'Medium' | 'Low' | 'Urgent';
   businessLine?: BusinessLine;
+  insurancePayment?: number;
+  insurancePaymentStatus?: string;
   hasExternalAppraisal?: boolean;
   valuationId?: string;
   description?: string;
@@ -147,6 +149,7 @@ export interface CompanyProfile {
   phone: string;
   costeHora: number;
   pvpManoObra: number;
+  subscriptionTier?: 'free' | 'premium';
   integrations?: {
     bitrixUrl?: string;
   };
@@ -172,6 +175,27 @@ export interface TimeLog {
   durationMinutes: number;
   employeeId: string;
   mechanicName: string;
+}
+
+export interface LaborLog {
+  id: string;
+  work_order_id: string;
+  client_id?: string;
+  employee_id?: string;
+  phase: string;
+  start_time: string;
+  end_time?: string;
+  duration_minutes?: number;
+  hourly_rate_snapshot?: number;
+  calculated_labor_cost?: number;
+  created_at?: string;
+}
+
+export interface AnalysisUsageLog {
+  id: string;
+  workshop_id: string;
+  report_type: string;
+  created_at: string;
 }
 
 export type QuoteStatus = 'Draft' | 'Sent' | 'Accepted' | 'Rejected' | 'Closed Won';

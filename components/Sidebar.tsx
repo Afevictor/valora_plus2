@@ -15,12 +15,12 @@ const NavItem = ({ to, icon, label, active, isClient }: { to: string, icon: Reac
     <Link
       to={to}
       className={`group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 mb-1.5 relative overflow-hidden ${active
-        ? isClient ? 'bg-emerald-600/10 text-emerald-400' : 'bg-brand-600/10 text-brand-400'
+        ? isClient ? 'bg-emerald-600/10 text-emerald-400' : 'bg-slate-600/10 text-slate-400'
         : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
         }`}
     >
       {active && (
-        <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full ${isClient ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]' : 'bg-brand-500 shadow-[0_0_12px_rgba(59,130,246,0.8)]'}`} />
+        <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full ${isClient ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]' : 'bg-slate-500 shadow-[0_0_12px_rgba(148,163,184,0.8)]'}`} />
       )}
 
       <div className={`transition-transform duration-300 group-hover:scale-110 ${active ? 'text-inherit' : 'text-slate-500 group-hover:text-slate-300'}`}>
@@ -32,7 +32,7 @@ const NavItem = ({ to, icon, label, active, isClient }: { to: string, icon: Reac
       </span>
 
       {active && (
-        <div className={`absolute right-2 w-1.5 h-1.5 rounded-full ${isClient ? 'bg-emerald-500' : 'bg-brand-500'} animate-pulse`} />
+        <div className={`absolute right-2 w-1.5 h-1.5 rounded-full ${isClient ? 'bg-emerald-500' : 'bg-slate-500'} animate-pulse`} />
       )}
     </Link>
   );
@@ -144,7 +144,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
 
                 <SectionHeader label="Peritación & Siniestros" />
                 <NavItem to="/valuations" icon={<ValuationsIcon />} label="Solicitudes Peritación" active={location.pathname === '/valuations'} isClient={false} />
-                <NavItem to="/claims-planner" icon={<ShieldIcon />} label="Gestor de Siniestros" active={location.pathname === '/claims-planner'} isClient={false} />
+                <NavItem to="/claims-planner" icon={<ShieldIcon />} label="Planificador de Siniestros" active={location.pathname === '/claims-planner'} isClient={false} />
                 <NavItem to="/history-claims" icon={<ArchiveIcon />} label="Historial Siniestros" active={location.pathname === '/history-claims'} isClient={false} />
 
                 <SectionHeader label="Ventas & Operaciones" />
@@ -188,7 +188,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
                     {activeRole || 'User'}
                   </span>
                   <button onClick={handleLogout} className="text-[10px] text-red-400/60 font-black hover:text-red-400 transition-colors uppercase tracking-tight font-sans">
-                    Logout
+                    Cerrar Sesión
                   </button>
                 </div>
               </div>

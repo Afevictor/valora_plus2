@@ -8,7 +8,7 @@ import { getBitrixUsers, BitrixUser } from '../services/bitrixService';
 // Ciclo de vida distinto para Siniestros (Administrativo/Pericial)
 const COLUMNS: { id: ClaimsStage; title: string; color: string }[] = [
     { id: 'draft', title: 'Borrador / Pendiente', color: 'border-slate-300' },
-    { id: 'sent_expert', title: 'Enviado a Perito', color: 'border-blue-400' },
+    { id: 'sent_expert', title: 'Enviado a Perito', color: 'border-slate-400' },
     { id: 'in_review', title: 'En Revisión (Chat)', color: 'border-purple-400' },
     { id: 'report_issued', title: 'Informe Emitido', color: 'border-green-400' },
     { id: 'negotiation', title: 'Revisión Taller', color: 'border-orange-400' },

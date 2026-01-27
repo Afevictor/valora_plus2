@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     AreaChart, Area, PieChart, Pie, Cell
@@ -10,6 +11,8 @@ import {
     getLaborLogsForOrder,
     getFilesForExpediente,
     getCompanyProfileFromSupabase,
+    getAnalyticsUsageCount,
+    logAnalyticsUsage,
     supabase
 } from '../services/supabaseClient';
 import { analyzeProfitabilityDocument } from '../services/geminiService';
@@ -57,6 +60,8 @@ const Analytics: React.FC = () => {
     const [isLoadingJobs, setIsLoadingJobs] = useState(true);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
+    const [subscriptionStatus, setSubscriptionStatus] = useState<{ isPremium: boolean, used: number }>({ isPremium: false, used: 0 });
+    const navigate = useNavigate();
 
     // Datos de Análisis
     const [realLaborCost, setRealLaborCost] = useState<number>(0);
@@ -68,10 +73,16 @@ const Analytics: React.FC = () => {
     useEffect(() => {
         const init = async () => {
             setIsLoadingJobs(true);
-            const [jobs, profile] = await Promise.all([
+            const [jobs, profile, usage] = await Promise.all([
                 getWorkOrdersFromSupabase(),
-                getCompanyProfileFromSupabase()
+                getCompanyProfileFromSupabase(),
+                getAnalyticsUsageCount()
             ]);
+
+            setSubscriptionStatus({
+                isPremium: profile?.subscriptionTier === 'premium',
+                used: usage
+            });
 
             // Filtrar solo estados finalizados
             const finished = jobs.filter(j =>
@@ -87,6 +98,18 @@ const Analytics: React.FC = () => {
 
     const handleAnalyzeJob = async (jobId: string) => {
         if (!jobId) return;
+
+        // 0. Usage Limit & Subscription Check
+        const profile = await getCompanyProfileFromSupabase();
+        const usageCount = await getAnalyticsUsageCount();
+
+        const isPremium = profile?.subscriptionTier === 'premium';
+
+        if (!isPremium && usageCount >= 3) {
+            navigate('/payment');
+            return;
+        }
+
         setSelectedJobId(jobId);
         setIsAnalyzing(true);
         setSmartData(null);
@@ -101,9 +124,37 @@ const Analytics: React.FC = () => {
             const totalRealLabor = logs.reduce((acc: number, l: any) => acc + (l.calculated_labor_cost || 0), 0);
             setRealLaborCost(totalRealLabor);
 
-            // 2. Obtener archivo de informe de peritación
+            // 2. Pre-fill from DB if available (Fast Path)
+            if (job.insurancePayment && job.insurancePayment > 0) {
+                setSmartData({
+                    financials: {
+                        total_gross: job.insurancePayment,
+                        total_net: job.insurancePayment / 1.21, // Estimación Base Imponible (IVA 21%)
+                        labor_total: 0,
+                        parts_total: 0
+                    },
+                    analysis: {
+                        summary: "Datos recuperados automáticamente del cierre de expediente.",
+                        profitability_rating: "Medium"
+                    },
+                    metadata: { confidence_score: 100 }
+                });
+                setIsAnalyzing(false);
+                return;
+            }
+
+            // 3. Obtener archivo de informe de peritación (Deep Analysis Fallback)
             const files = await getFilesForExpediente(jobId, job.expedienteId);
-            const valuationReport = files.find(f => f.category === 'Valuation Report');
+            let valuationReport = files.find(f => f.category === 'Valuation Report');
+
+            if (!valuationReport) {
+                valuationReport = files.find(f =>
+                    (f.original_filename?.toLowerCase().includes('valoraci') ||
+                        f.original_filename?.toLowerCase().includes('informe') ||
+                        f.original_filename?.toLowerCase().includes('perita')) &&
+                    f.mime_type === 'application/pdf'
+                );
+            }
 
             if (!valuationReport) {
                 alert("No se encontró informe de peritación. Asegúrese de que el informe se subió durante el cierre en el Kanban.");
@@ -124,6 +175,8 @@ const Analytics: React.FC = () => {
                 const result = await analyzeProfitabilityDocument(base64data, mimeType);
                 if (result) {
                     setSmartData(result);
+                    // Log successful usage
+                    await logAnalyticsUsage('profitability');
                 } else {
                     alert("Falló la extracción profunda. Por favor, revise el formato del documento.");
                 }
@@ -167,9 +220,13 @@ const Analytics: React.FC = () => {
     const valuedLabor = smartData?.financials?.labor_total || 0;
     const valuedParts = smartData?.financials?.parts_total || 0;
     const valuedPaint = smartData?.financials?.paint_material_total || 0;
-    const valuedTotal = smartData?.financials?.total_net || 0;
+    const valuedTotal = smartData?.financials?.total_net || (smartData?.financials?.total_gross ? smartData.financials.total_gross / 1.21 : 0);
 
-    const estimatedRealCost = realLaborCost + (valuedParts * 0.7) + (valuedPaint * 0.6); // 30% margin assumed on parts/paint
+    // PROFITABILITY CALCULATION (Simplified for Regex/Total-only extraction)
+    // Note: If extraction only returns 'total_gross' (Regex), then 'valuedParts' is 0.
+    // This means 'estimatedRealCost' will only count Labor.
+    // Resulting Profit = (TotalNet) - (LaborCost). Parts cost is ignored (treated as 100% margin) unless parsed.
+    const estimatedRealCost = realLaborCost + (valuedParts * 0.7) + (valuedPaint * 0.6);
     const netBenefit = valuedTotal - estimatedRealCost;
     const marginPercentage = valuedTotal > 0 ? (netBenefit / valuedTotal * 100) : 0;
 
@@ -213,6 +270,16 @@ const Analytics: React.FC = () => {
                             ))}
                         </select>
                     </div>
+
+                    {!subscriptionStatus.isPremium && (
+                        <button
+                            onClick={() => navigate('/payment')}
+                            className="px-6 py-3 bg-gradient-to-r from-brand-600 to-indigo-600 text-white rounded-xl text-sm font-black uppercase tracking-widest hover:shadow-lg hover:scale-105 transition-all"
+                        >
+                            Upgrade ({subscriptionStatus.used}/3 Free)
+                        </button>
+                    )}
+
                     <button
                         onClick={handleDownloadPDF}
                         disabled={!selectedJobId || isAnalyzing || isExporting}
@@ -280,24 +347,26 @@ const Analytics: React.FC = () => {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                             <KPICard
                                 loading={isAnalyzing}
-                                title="TOTAL VALORADO"
-                                value={smartData ? fmt(valuedTotal) : '3084,79 €'}
-                                subtitle="Monto total según peritación"
-                                trend={"+12.5%"}
+                                title="PAGO ASEGURADORA"
+                                value={smartData ? fmt(smartData.financials.total_gross) : '--- €'}
+                                subtitle="Total Factura (Inc. IVA)"
+                                color="blue"
                             />
                             <KPICard
                                 loading={isAnalyzing}
-                                title="PRODUCTIVIDAD GLOBAL"
-                                value={smartData ? "92.4%" : "92.4%"}
-                                subtitle="H. Facturadas / H. Presencia"
-                                trend="+1.2%"
+                                title="COSTE REAL TALLER"
+                                value={fmt(realLaborCost)}
+                                subtitle="Coste Laboral (Logs)"
+                                trend="Log Tiempos"
+                                color="orange"
                             />
                             <KPICard
                                 loading={isAnalyzing}
-                                title="COSTE HORA REAL"
-                                value={smartData ? `${hourlyRate.toFixed(2)} €` : "38.50 €"}
-                                subtitle="Basado en estructura de costes"
-                                trend="-0.50 €"
+                                title="BENEFICIO (PROFIT)"
+                                value={smartData ? fmt(valuedTotal - realLaborCost) : "--- €"}
+                                subtitle="Pago Neto - Coste Real"
+                                color="emerald"
+                                trend={smartData ? ((valuedTotal - realLaborCost) > 0 ? "+Ganancia" : "-Pérdida") : ""}
                             />
                         </div>
 

@@ -35,8 +35,8 @@ CREATE POLICY "Vehicle Permissive Access" ON public.vehicles FOR ALL TO authenti
 CREATE POLICY "Client Permissive Access" ON public.clients FOR ALL TO authenticated USING (true);
 
 -- 6. COMPANY PROFILE:
-CREATE POLICY "Profile Public Read" ON public.company_profile FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Profile Owner Manage" ON public.company_profile FOR ALL TO authenticated USING (auth.uid() = workshop_id);
+CREATE POLICY "Profile Public Read" ON public.company_profiles FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Profile Owner Manage" ON public.company_profiles FOR ALL TO authenticated USING (auth.uid() = id);
 
 -- 7. STORAGE POLICIES:
 -- Ultra-permissive for testing 'reception-files'

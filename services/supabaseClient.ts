@@ -163,6 +163,28 @@ export const getFilesForExpediente = async (uuid: string, humanId?: string) => {
     }
 };
 
+export const logClientActivity = async (activity: {
+    client_id?: string;
+    plate?: string;
+    expediente_id: string;
+    activity_type?: string;
+    summary: string;
+    file_assets?: any[];
+    raw_data?: any;
+}) => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        await supabase.from('client_activity_feed').insert({
+            ...activity,
+            workshop_id: user.id
+        });
+    } catch (e) {
+        console.error("[ACTIVITY LOG] Failed to log activity:", e);
+    }
+};
+
 export const uploadWorkshopFile = async (f: File, b: string, p: string) => {
     try {
         const { data, error } = await supabase.storage.from(b).upload(p, f, { cacheControl: '3600', upsert: true });
@@ -390,13 +412,48 @@ export const getWorkOrdersFromSupabase = async (): Promise<RepairJob[]> => {
 
         const { data, error } = await query;
         if (error) throw error;
-        return data?.map(d => d.raw_data as RepairJob) || [];
+        return data?.map(d => ({
+            ...d.raw_data,
+            insurancePayment: d.insurance_payment,
+            insurancePaymentStatus: d.insurance_payment_status
+        } as RepairJob)) || [];
     } catch (e) {
         logError('getWorkOrders', e);
         return [];
     }
 };
-export const getWorkOrder = async (id: string): Promise<RepairJob | null> => { try { const { data, error } = await supabase.from('work_orders').select('*').eq('id', id).single(); if (error) throw error; return data ? (data.raw_data as RepairJob) : null; } catch (e) { return null; } };
+
+export const getWorkOrdersByClient = async (clientId: string): Promise<WorkOrder[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('work_orders')
+            .select('*')
+            .eq('client_id', clientId);
+
+        if (error) throw error;
+        return (data || []).map(d => ({
+            ...d.raw_data,
+            insurancePayment: d.insurance_payment,
+            insurancePaymentStatus: d.insurance_payment_status
+        } as WorkOrder));
+    } catch (e) {
+        logError('getWorkOrdersByClient', e);
+        return [];
+    }
+};
+export const getWorkOrder = async (id: string): Promise<RepairJob | null> => {
+    try {
+        const { data, error } = await supabase.from('work_orders').select('*').eq('id', id).single();
+        if (error) throw error;
+        return data ? ({
+            ...data.raw_data,
+            insurancePayment: data.insurance_payment,
+            insurancePaymentStatus: data.insurance_payment_status
+        } as RepairJob) : null;
+    } catch (e) {
+        return null;
+    }
+};
 
 export const saveWorkOrderToSupabase = async (wo: WorkOrder, explicitWorkshopId?: string) => {
     try {
@@ -433,53 +490,167 @@ export const deleteWorkOrder = async (id: string) => {
 };
 
 export const updateWorkOrderStatus = async (id: string, status: RepairStage) => { try { const { data: wo } = await supabase.from('work_orders').select('raw_data').eq('id', id).single(); if (!wo) return false; const updatedRaw = { ...wo.raw_data, status }; const { error } = await supabase.from('work_orders').update({ status: status, raw_data: updatedRaw }).eq('id', id); if (error) throw error; return true; } catch (e) { return false; } };
-export const saveVehicle = async (vehicle: Vehicle) => {
+export const saveVehicle = async (vehicle: Vehicle, explicitWorkshopId?: string) => {
     try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return false;
 
         const { error } = await supabase.from('vehicles').upsert({
             id: vehicle.id,
-            workshop_id: user.id,
+            workshop_id: explicitWorkshopId || user.id,
             raw_data: vehicle
         });
         if (error) throw error;
         return true;
     } catch (e) {
+        logError('saveVehicle', e);
         return false;
+    }
+};
+
+export const getVehiclesByClient = async (clientId: string): Promise<Vehicle[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('vehicles')
+            .select('*')
+            .filter('raw_data->>clientId', 'eq', clientId);
+
+        if (error) throw error;
+        return (data || []).map(d => d.raw_data as Vehicle);
+    } catch (e) {
+        logError('getVehiclesByClient', e);
+        return [];
     }
 };
 
 export const getVehicle = async (id: string) => { try { const { data, error } = await supabase.from('vehicles').select('*').eq('id', id).single(); if (error) throw error; return data ? (data.raw_data as Vehicle) : null; } catch (e) { return null; } };
 
-export const getCompanyProfileFromSupabase = async (): Promise<CompanyProfile | null> => { try { const { data, error } = await supabase.from('company_profile').select('*').limit(1).maybeSingle(); if (error) throw error; if (!data) return null; return data.raw_data || null; } catch (error) { return null; } };
+export const getCompanyProfileFromSupabase = async (): Promise<CompanyProfile | null> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return null;
+
+        const { data, error } = await supabase
+            .from('company_profiles') // Correct Table
+            .select('*')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        if (error) throw error;
+        if (!data) return null;
+
+        return {
+            companyName: data.company_name,
+            cif: data.cif,
+            address: data.address,
+            city: data.city,
+            zipCode: data.zip_code,
+            province: data.province,
+            email: data.email,
+            phone: data.phone,
+            costeHora: data.coste_hora,
+            pvpManoObra: data.pvp_mano_obra,
+            subscriptionTier: data.subscription_tier || 'free'
+        };
+    } catch (e) {
+        logError('getCompanyProfile', e);
+        return null;
+    }
+};
 
 export const saveCompanyProfileToSupabase = async (profile: CompanyProfile) => {
     try {
         const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("No authenticated user");
+
+        // Map camelCase to snake_case for DB
+        const payload = {
+            id: user.id,
+            company_name: profile.companyName,
+            cif: profile.cif,
+            address: profile.address,
+            city: profile.city,
+            zip_code: profile.zipCode,
+            province: profile.province,
+            email: profile.email,
+            phone: profile.phone,
+            coste_hora: profile.costeHora,
+            pvp_mano_obra: profile.pvpManoObra,
+            updated_at: new Date().toISOString()
+        };
+
+        const { error } = await supabase.from('company_profiles').upsert(payload);
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        logError('saveCompanyProfile', e);
+        throw e;
+    }
+};
+
+// --- Analytics Usage Tracking ---
+
+export const getAnalyticsUsageCount = async (): Promise<number> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return 3; // Fail safe to limit if no user
+
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+        const { count, error } = await supabase
+            .from('analysis_usage_log')
+            .select('*', { count: 'exact', head: true })
+            .eq('workshop_id', user.id)
+            .gte('created_at', firstDay);
+
+        if (error) throw error;
+        return count || 0;
+    } catch (e) {
+        logError('getAnalyticsUsageCount', e);
+        return 3;
+    }
+};
+
+export const logAnalyticsUsage = async (type: string = 'profitability') => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
         if (!user) return false;
 
-        // Note: We use the user's ID as the unique key for the profile to support multi-tenancy properly
-        // or ensure 'id' is managed if using the 'id=1' singleton pattern per RLS partition.
-        // Assuming the schema uses 'id' serial but allows duplicate IDs across different RLS partitions?
-        // Actually, if ID is primary key, it must be unique globally.
-        // We should search for existing profile by workshop_id.
-
-        const { data: existing } = await supabase.from('company_profile').select('id').eq('workshop_id', user.id).maybeSingle();
-        const profileId = existing?.id || 1; // Fallback to 1 if first time, but this might conflict if global. 
-        // Ideally schema change: id UUID DEFAULT gen_random_uuid().
-        // For now, we rely on RLS/Upsert. The schema defines id INTEGER DEFAULT 1.
-
-        const { error } = await supabase.from('company_profile').upsert({
-            id: profileId, // If we force 1, it conflicts. Let's try to match existing logic but add workshop_id.
+        const { error } = await supabase.from('analysis_usage_log').insert({
             workshop_id: user.id,
-            raw_data: profile
-        }, { onConflict: 'workshop_id' }); // Use workshop_id constraint if possible
+            report_type: type
+        });
 
         if (error) throw error;
         return true;
-    } catch (error) {
-        logError('saveCompanyProfile', error);
+    } catch (e) {
+        logError('logAnalyticsUsage', e);
+        return false;
+    }
+};
+
+export const upgradeToPremium = async () => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return false;
+
+        const { error } = await supabase.from('company_profiles').update({ subscription_tier: 'premium' }).eq('id', user.id);
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        logError('upgradeToPremium', e);
+        return false;
+    }
+};
+
+export const updateWorkOrderFinancials = async (id: string, updates: { insurance_payment?: number, insurance_payment_status?: string }) => {
+    try {
+        const { error } = await supabase.from('work_orders').update(updates).eq('id', id);
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        logError('updateWorkOrderFinancials', e);
         return false;
     }
 };

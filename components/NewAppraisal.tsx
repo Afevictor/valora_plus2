@@ -9,6 +9,7 @@ import {
     saveVehicle,
     uploadWorkshopFile,
     saveFileMetadata,
+    logClientActivity,
     supabase
 } from '../services/supabaseClient';
 import { analyzeVehicleReceptionBatch } from '../services/geminiService';
@@ -185,52 +186,9 @@ const NewAppraisal: React.FC = () => {
     };
 
     const runSmartAnalysis = async (specificFiles?: StagedFile[]) => {
-        const analyzeableFiles = (specificFiles || stagedFiles).filter(f => f.type === 'image' || f.type === 'pdf');
-        if (analyzeableFiles.length === 0) return;
-        setIsAnalyzing(true);
-
-        try {
-            const filePayloads = await Promise.all(analyzeableFiles.map(async (staged) => {
-                const response = await fetch(staged.preview);
-                const blob = await response.blob();
-                const base64 = await new Promise<string>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.readAsDataURL(blob);
-                });
-                return {
-                    data: base64,
-                    mimeType: staged.file.type
-                };
-            }));
-
-            const result = await analyzeVehicleReceptionBatch(filePayloads);
-            if (result && result.data) {
-                setVehicleData(prev => ({
-                    ...prev,
-                    plate: result.data.plate || prev.plate,
-                    vin: result.data.vin || prev.vin,
-                    km: result.data.km || prev.km,
-                    brand: result.data.brand || prev.brand,
-                    model: result.data.model || prev.model
-                }));
-
-                // Auto-classify files if classifications provided
-                if (result.classification) {
-                    Object.entries(result.classification).forEach(([category, fileIndex]) => {
-                        const idx = fileIndex as number;
-                        const targetFile = analyzeableFiles[idx];
-                        if (targetFile) {
-                            updateFileCategory(targetFile.id, category);
-                        }
-                    });
-                }
-            }
-        } catch (e) {
-            console.error("Error en Análisis Inteligente", e);
-        } finally {
-            setIsAnalyzing(false);
-        }
+        // AI Analysis removed - Manual entry required
+        console.log("AI analysis disabled. Please enter vehicle data manually.");
+        return;
     };
 
     const handleDirectAiScan = async (files: FileList | null) => {
@@ -294,7 +252,7 @@ const NewAppraisal: React.FC = () => {
                 fuel: 'Desconocido',
                 transmission: 'Manual',
                 color: 'Blanco'
-            });
+            }, workshopOwnerId);
 
             // 2. Guardar Orden de Trabajo
             console.log("[SUBMIT] Saving work order...");
@@ -351,9 +309,36 @@ const NewAppraisal: React.FC = () => {
                     console.log(`[FILE] Metadata saved.`);
                 } else {
                     console.error(`[FILE] FAILED to upload ${staged.file.name}`);
-                    // We continue with other files even if one fails
                 }
             }
+
+            // --- STEP 4: LOG TO CENTRAL ACTIVITY FEED (HIGH RELIABILITY) ---
+            console.log("[SUBMIT] Logging to global activity feed...");
+            const activityFiles: any[] = [];
+            for (const staged of stagedFiles) {
+                // We need the public URL for the feed
+                const { data: { publicUrl } } = supabase.storage.from(staged.bucket).getPublicUrl(`${workshopOwnerId}/${dbId}/${staged.file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase()}`);
+                activityFiles.push({
+                    url: publicUrl,
+                    name: staged.file.name,
+                    category: staged.category,
+                    type: staged.type
+                });
+            }
+
+            await logClientActivity({
+                client_id: selectedClient.id,
+                plate: vehicleData.plate,
+                expediente_id: dbId,
+                activity_type: 'appraisal_request',
+                summary: repairDetails.description || 'New repair request submitted.',
+                file_assets: activityFiles,
+                raw_data: {
+                    vehicle: vehicleData,
+                    details: repairDetails,
+                    tempTicketId
+                }
+            });
 
             console.log("[SUBMIT] All processes completed.");
             if (activeRole === 'Client') {
@@ -570,7 +555,7 @@ const NewAppraisal: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6 relative overflow-hidden">
                             <div className="flex justify-between items-center border-b pb-2">
-                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Vehicle Identification</h3>
+                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Identificación del Vehículo</h3>
                                 <div className="flex gap-2">
                                     <input
                                         ref={aiScanInputRef}
@@ -585,38 +570,29 @@ const NewAppraisal: React.FC = () => {
                                         className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase transition-all bg-emerald-500 text-white hover:bg-emerald-600 shadow-md shadow-emerald-200"
                                     >
                                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                                        Upload & Read
+                                        Subir Archivos
                                     </button>
                                     <button
-                                        onClick={() => runSmartAnalysis()}
-                                        disabled={isAnalyzing || stagedFiles.length === 0}
-                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase transition-all ${isAnalyzing ? 'bg-indigo-100 text-indigo-400 animate-pulse' : 'bg-indigo-500 text-white hover:bg-indigo-600 shadow-md shadow-indigo-200'}`}
+                                        onClick={() => alert('Por favor, ingrese los datos del vehículo manualmente en los campos a continuación.')}
+                                        disabled={isAnalyzing}
+                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase transition-all bg-slate-400 text-white cursor-not-allowed`}
                                     >
-                                        {isAnalyzing ? (
-                                            <>
-                                                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                                Scanning...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                                                Re-Scan All
-                                            </>
-                                        )}
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                        Entrada Manual
                                     </button>
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="col-span-2">
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">License Plate</label>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Matrícula</label>
                                     <input type="text" className="w-full p-3 border rounded-xl font-mono font-black text-lg bg-slate-50 uppercase focus:ring-2 focus:ring-emerald-500" value={vehicleData.plate} onChange={e => setVehicleData({ ...vehicleData, plate: e.target.value })} />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Mileage</label>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Kilometraje</label>
                                     <input type="number" className="w-full p-2 border rounded-lg font-bold text-slate-700" value={vehicleData.km === 0 ? '' : vehicleData.km} onChange={e => setVehicleData({ ...vehicleData, km: parseInt(e.target.value) || 0 })} />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Model</label>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Modelo</label>
                                     <input type="text" className="w-full p-2 border rounded-lg font-bold text-slate-700" value={vehicleData.model} onChange={e => setVehicleData({ ...vehicleData, model: e.target.value })} />
                                 </div>
                                 <div className="col-span-2">
