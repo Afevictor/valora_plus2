@@ -221,7 +221,7 @@ const RepairKanban: React.FC = () => {
     const getCount = (stage: RepairStage) => filteredJobs.filter(j => j.status === stage).length;
 
     return (
-        <div className="h-[calc(100vh-4rem)] flex flex-col p-6 overflow-hidden">
+        <div className="h-[calc(100vh-4rem)] flex flex-col p-4 md:p-6 overflow-hidden">
 
             {/* CABECERA Y CONTROLES */}
             <div className="flex flex-col gap-6 mb-6 flex-shrink-0">

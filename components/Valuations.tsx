@@ -428,10 +428,10 @@ const Valuations: React.FC = () => {
     );
 
     return (
-        <div className="flex h-[calc(100vh)] bg-white overflow-hidden font-sans">
+        <div className="flex h-[calc(100vh-4rem)] md:h-screen bg-white overflow-hidden font-sans">
 
             {/* BARRA LATERAL */}
-            <div className="w-80 md:w-[360px] flex flex-col bg-white border-r border-slate-200">
+            <div className={`w-full md:w-[360px] flex-col bg-white border-r border-slate-200 ${selectedValuation ? 'hidden md:flex' : 'flex'}`}>
                 {/* Cabecera */}
                 <div className="p-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -502,13 +502,16 @@ const Valuations: React.FC = () => {
             </div>
 
             {/* ÁREA PRINCIPAL */}
-            <div className="flex-1 flex flex-col h-full bg-[#F5F7F8] relative min-w-0">
+            <div className={`flex-1 flex-col h-full bg-[#F5F7F8] relative min-w-0 ${selectedValuation ? 'flex' : 'hidden md:flex'}`}>
 
                 {selectedValuation ? (
                     <>
                         {/* CABECERA DEL CHAT */}
-                        <div className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0 shadow-sm z-10">
-                            <div className="flex items-center gap-4">
+                        <div className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-6 flex-shrink-0 shadow-sm z-10">
+                            <div className="flex items-center gap-3 md:gap-4">
+                                <button onClick={() => setSelectedValuation(null)} className="md:hidden text-slate-500 hover:text-slate-700">
+                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                                </button>
                                 <div className="relative">
                                     <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm">
                                         {getInitials(getChatName(selectedValuation))}

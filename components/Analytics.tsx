@@ -248,7 +248,7 @@ const Analytics: React.FC = () => {
     ];
 
     return (
-        <div className="p-6 max-w-7xl mx-auto animate-fade-in pb-20 bg-slate-50/30">
+        <div className="p-4 md:p-6 max-w-7xl mx-auto animate-fade-in pb-20 bg-slate-50/30">
 
             {/* Fila de Selector y Acciones */}
             <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4 px-2">

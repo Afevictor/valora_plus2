@@ -358,7 +358,7 @@ const NewAppraisal: React.FC = () => {
     const isStep2Valid = stagedFiles.length > 0 && stagedFiles.every(f => f.category !== '');
 
     return (
-        <div className="max-w-5xl mx-auto p-6 min-h-[calc(100vh-2rem)]">
+        <div className="max-w-5xl mx-auto p-4 md:p-6 min-h-[calc(100vh-2rem)]">
 
             {/* Cabecera de Pasos */}
             <div className="mb-8">

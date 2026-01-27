@@ -90,7 +90,7 @@ const ClaimsPlanner: React.FC = () => {
     });
 
     return (
-        <div className="h-[calc(100vh-4rem)] flex flex-col p-6 overflow-hidden bg-slate-50 relative">
+        <div className="h-[calc(100vh-4rem)] flex flex-col p-4 md:p-6 overflow-hidden bg-slate-50 relative">
 
             {isLoading && (
                 <div className="absolute inset-0 bg-white/80 z-20 flex items-center justify-center">

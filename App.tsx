@@ -24,7 +24,7 @@ import LandingPage from './components/LandingPage';
 import ClientAnalysisPortal from './components/ClientAnalysisPortal';
 import Subscription from './components/Subscription';
 import Auth from './components/Auth';
-import { supabase } from './services/supabaseClient';
+import { supabase, checkIsWorkshopAuthEmail } from './services/supabaseClient';
 import { AppRole } from './types';
 
 // Role-based route guard
@@ -70,8 +70,21 @@ const App = () => {
   useEffect(() => {
     const initSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setSession(session);
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        setSession(currentSession);
+
+        // Robust role enforcement on init
+        if (currentSession && !activeRole) {
+          const email = currentSession.user?.email;
+          if (email) {
+            const { checkIsWorkshopAuthEmail } = await import('./services/supabaseClient');
+            const isWhitelisted = await checkIsWorkshopAuthEmail(email);
+            const isMetadata = currentSession.user?.user_metadata?.user_type === 'workshop';
+            const isEffectiveAdmin = isWhitelisted || isMetadata;
+
+            handleAuthSuccess(isEffectiveAdmin ? 'Admin' : 'Client');
+          }
+        }
       } catch (e) {
         console.warn("Auth initialization warning:", e);
       } finally {
@@ -112,18 +125,6 @@ const App = () => {
 
   // PROTECTED FLOW: Landing Page -> Auth -> App
   if (!session || !activeRole) {
-    // AUTO-ROLE ENFORCEMENT: If session exists but no activeRole, check metadata
-    if (session && !activeRole) {
-      const userType = session.user?.user_metadata?.user_type;
-      if (userType === 'client') {
-        handleAuthSuccess('Client');
-      } else {
-        // Workshop users automatically get Admin role, bypassing passcode
-        handleAuthSuccess('Admin');
-      }
-      return null;
-    }
-
     // Show Auth if user clicked a trigger on landing
     if (showAuth) {
       return (

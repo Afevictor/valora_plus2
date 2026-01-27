@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { supabase, saveUserPins, verifyPinAndGetRole, saveClientToSupabase } from '../services/supabaseClient';
+import { supabase, saveUserPins, verifyPinAndGetRole, saveClientToSupabase, checkIsWorkshopAuthEmail, addToWorkshopAuth } from '../services/supabaseClient';
 import { AppRole, Client, ClientType, PaymentMethod, PaymentTerms, ContactChannel, TariffType } from '../types';
 
 interface AuthProps {
@@ -66,11 +66,32 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
     } else if (data.user) {
       setAuthenticatedUserId(data.user.id);
 
-      // Determine if this is a Client login or Workshop login based on view
+      // Retrieve additional checks
+      const isWorkshopAuthTable = await checkIsWorkshopAuthEmail(email);
+      const isMetadataAdmin = data.user.user_metadata?.user_type === 'workshop';
+
+      // Effective Admin check: Is in whitelist OR has admin metadata
+      const isEffectiveAdmin = isWorkshopAuthTable || isMetadataAdmin;
+
       if (view === 'client_login') {
+        // If client login area, be paranoid: If ANY sign of admin, BLOCK IT.
+        if (isEffectiveAdmin) {
+          console.warn(`[AUTH SECURITY] Blocked Admin Login on Client Portal: ${email}`);
+          setError("ACCESO DENEGADO: Cuenta de Administrador detectada. Por favor use el acceso de Taller.");
+          await supabase.auth.signOut();
+          setLoading(false);
+          return;
+        }
         onAuthSuccess('Client');
       } else {
-        // Automatically assign Admin role and finish auth
+        // Workshop Area: Must be explicitly whitelisted in workshop_auth 
+        // OR have the correct metadata (legacy support)
+        if (!isEffectiveAdmin) {
+          setError("ACCESO DENEGADO: Sus credenciales no corresponden a un administrador de taller.");
+          await supabase.auth.signOut();
+          setLoading(false);
+          return;
+        }
         onAuthSuccess('Admin');
       }
       setLoading(false);
@@ -111,6 +132,7 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
       }
 
       try {
+        await addToWorkshopAuth(email);
         setAuthenticatedUserId(data.user.id);
         onAuthSuccess('Admin');
       } catch (err: any) {
@@ -191,7 +213,7 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
         <div className="text-center mb-6 md:mb-10">
           <div className={`w-14 h-14 ${view.includes('client') ? 'bg-emerald-500' : 'bg-brand-600'} rounded-2xl flex items-center justify-center text-white font-black shadow-lg mx-auto mb-6 text-2xl`}>V+</div>
           <h2 className="text-3xl font-black text-slate-900">
-            {view === 'login' ? 'Taller' :
+            {view === 'login' ? 'Admin' :
               view === 'signup' ? 'Crear Cuenta de Taller' :
                 view === 'client_login' ? 'Acceso Cliente' :
                   view === 'client_signup' ? 'Nuevo Cliente' :

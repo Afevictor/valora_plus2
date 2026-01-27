@@ -95,30 +95,32 @@ const Dashboard: React.FC = () => {
   const canSeeKanban = !isClient;
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <div className="mb-8 flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight uppercase">
-            {isClient ? `Hola, ${displayName}` : 'Administrative Dashboard'}
+            {isClient ? `Hola, ${displayName}` : 'Panel de Gestión'}
           </h1>
           <p className="text-slate-500 font-medium">
             {isClient ? 'Siga sus reparaciones activas e historial de mantenimiento.' : 'Bienvenido al centro de gestión profesional.'}
           </p>
         </div>
-        <div className="flex gap-4">
-          <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm text-center">
-            <p className="text-xs text-slate-500 uppercase font-bold">{isClient ? 'Solicitadas' : 'Recepción'}</p>
-            <p className="text-xl font-bold text-blue-600">{stats.reception}</p>
+        {isClient && (
+          <div className="flex gap-4">
+            <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm text-center">
+              <p className="text-xs text-slate-500 uppercase font-bold">Solicitadas</p>
+              <p className="text-xl font-bold text-blue-600">{stats.reception}</p>
+            </div>
+            <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm text-center">
+              <p className="text-xs text-slate-500 uppercase font-bold">En Taller</p>
+              <p className="text-xl font-bold text-orange-600">{stats.inProgress}</p>
+            </div>
+            <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm text-center">
+              <p className="text-xs text-slate-500 uppercase font-bold">Entregas</p>
+              <p className="text-xl font-bold text-green-600">{stats.finished}</p>
+            </div>
           </div>
-          <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm text-center">
-            <p className="text-xs text-slate-500 uppercase font-bold">En Taller</p>
-            <p className="text-xl font-bold text-orange-600">{stats.inProgress}</p>
-          </div>
-          <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm text-center">
-            <p className="text-xs text-slate-500 uppercase font-bold">{isClient ? 'Entregas' : 'Finalizadas'}</p>
-            <p className="text-xl font-bold text-green-600">{stats.finished}</p>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* QUICK ACTIONS ROW */}

@@ -65,6 +65,21 @@ export const verifyPinAndGetRole = async (userId: string, enteredPin: string): P
     return null;
 };
 
+// Check if email exists in workshop_auth to prevent client login
+export const checkIsWorkshopAuthEmail = async (email: string): Promise<boolean> => {
+    try {
+        const { data, error } = await supabase
+            .from('workshop_auth')
+            .select('email')
+            .eq('email', email)
+            .maybeSingle();
+        if (error) return false;
+        return !!data;
+    } catch (e) {
+        return false;
+    }
+};
+
 // --- Labor & Timing Persistence ---
 export const saveLaborLog = async (log: {
     work_order_id: string;
@@ -729,3 +744,14 @@ export const deleteOpportunity = async (id: string) => {
     }
 };
 export const sendMessageToValuation = async (m: any) => { try { const { error } = await supabase.from('valuation_messages').insert(m); if (error) throw error; return true; } catch (e) { return false; } };
+
+export const addToWorkshopAuth = async (email: string) => {
+    try {
+        const { error } = await supabase.from('workshop_auth').upsert({ email }, { onConflict: 'email' });
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        logError('addToWorkshopAuth', e);
+        return false;
+    }
+};
