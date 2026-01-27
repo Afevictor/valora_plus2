@@ -133,48 +133,48 @@ const LandingPage: React.FC<LandingPageProps> = ({
       <section id="features" className="py-32 relative border-t border-slate-200/50 bg-white/50">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-24 max-w-3xl mx-auto">
-            <span className="text-brand-600 font-black uppercase tracking-widest text-xs mb-4 block">Our Core Pillar</span>
-            <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight mb-6">Objective Damage Assessments</h2>
+            <span className="text-brand-600 font-black uppercase tracking-widest text-xs mb-4 block">Nuestro Pilar Fundamental</span>
+            <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight mb-6">Valoraciones de Daños Objetivas</h2>
             <p className="text-xl text-slate-500 font-medium leading-relaxed">
-              Transform the profitability and efficiency of your workshop with independent expert reports that guarantee fair and accurate assessment.
+              Transforme la rentabilidad y eficiencia de su taller con informes periciales independientes que garantizan una valoración justa y precisa.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
               {
-                title: "Increased Profitability",
-                desc: "Identify and ensure fair compensation for each repair, increasing your profits by between 5% and 35%. Accuracy translates directly into greater profitability.",
+                title: "Aumento de Rentabilidad",
+                desc: "Identifique y asegure la compensación justa por cada reparación, incrementando sus beneficios entre un 5% y un 35%. La precisión se traduce directamente en mayor rentabilidad.",
                 icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
                 color: "brand"
               },
               {
-                title: "Effective Negotiation",
-                desc: "Armed with impartial assessments, you gain greater negotiating power. Obtain appropriate rates and reduce discrepancies with insurance companies.",
-                icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>,
+                title: "Negociación Efectiva",
+                desc: "Armado con valoraciones imparciales, obtiene un mayor poder de negociación. Consiga baremos adecuados y reduzca las discrepancias con las aseguradoras.",
+                icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>,
                 color: "indigo"
               },
               {
-                title: "Efficiency & Accuracy",
-                desc: "Receive appraisals in less than 24 hours. Streamline your repair management and significantly improve operational efficiency.",
+                title: "Eficiencia y Rapidez",
+                desc: "Reciba las peritaciones en menos de 24 horas. Agilice la gestión de sus expedientes y mejore significativamente la eficiencia operativa.",
                 icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
                 color: "emerald"
               },
               {
-                title: "No Training Required",
-                desc: "Avoid expensive training or software investments. We handle the entire appraisal process using specialized tools and expertise.",
+                title: "Sin Formación Necesaria",
+                desc: "Evite costosas inversiones en formación o software. Nosotros nos encargamos de todo el proceso de peritación con expertos.",
                 icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>,
                 color: "amber"
               },
               {
-                title: "Total Independence",
-                desc: "We are experts with NO ties to insurers. Our assessments are 100% impartial and focused solely on your workshop's interests.",
+                title: "Independencia Total",
+                desc: "Somos peritos SIN vínculos con aseguradoras. Nuestras valoraciones son 100% imparciales y centradas en sus intereses.",
                 icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
                 color: "rose"
               },
               {
-                title: "Seamless Integration",
-                desc: "We integrate smoothly into your daily operations with flexible hours and solutions adapted to your existing systems.",
+                title: "Integración Fluida",
+                desc: "Nos integramos sin fricciones en su operativa diaria con soluciones adaptadas a sus sistemas actuales.",
                 icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>,
                 color: "cyan"
               }
@@ -193,16 +193,16 @@ const LandingPage: React.FC<LandingPageProps> = ({
             <div className="absolute top-0 right-0 w-64 h-64 bg-brand-600/20 rounded-full blur-[100px]" />
             <div className="relative z-10 grid md:grid-cols-3 gap-12">
               <div>
-                <h4 className="text-brand-400 font-black uppercase tracking-widest text-xs mb-4">Customer Satisfaction</h4>
-                <p className="text-slate-300 font-medium">Improve relationship with insurers and customers through transparency and professional assessments.</p>
+                <h4 className="text-brand-400 font-black uppercase tracking-widest text-xs mb-4">Satisfacción del Cliente</h4>
+                <p className="text-slate-300 font-medium">Mejore la relación con aseguradoras y clientes finales a través de la transparencia y peritaciones profesionales.</p>
               </div>
               <div>
-                <h4 className="text-brand-400 font-black uppercase tracking-widest text-xs mb-4">Reduced Disputes</h4>
-                <p className="text-slate-300 font-medium">Minimize disputes and reduce resolution times with grounded, objective reports.</p>
+                <h4 className="text-brand-400 font-black uppercase tracking-widest text-xs mb-4">Reducción de Conflictos</h4>
+                <p className="text-slate-300 font-medium">Minimice las discusiones y reduzca los tiempos de resolución con informes fundamentados y objetivos.</p>
               </div>
               <div>
-                <h4 className="text-brand-400 font-black uppercase tracking-widest text-xs mb-4">Resource Maximization</h4>
-                <p className="text-slate-300 font-medium">Free your team from appraisals so they can focus entirely on productive repairs.</p>
+                <h4 className="text-brand-400 font-black uppercase tracking-widest text-xs mb-4">Maximización de Recursos</h4>
+                <p className="text-slate-300 font-medium">Libere a su equipo de las peritaciones para que se centren totalmente en las reparaciones productivas.</p>
               </div>
             </div>
           </div>

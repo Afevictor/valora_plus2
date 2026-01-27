@@ -174,6 +174,7 @@ export const analyzeProfitabilityDocument = async (base64Data: string, mimeType:
     if (mimeType.includes("pdf")) {
       try {
         // Importación dinámica de PDF.js
+        // @ts-ignore
         const pdfjs = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/+esm');
         pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
 

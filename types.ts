@@ -100,7 +100,7 @@ export interface HourCostCalculation {
 
 export type RepairType = 'Accident' | 'Maintenance' | 'MOT' | 'Mechanics' | 'Electricity' | 'Tyres' | 'BodyPaint' | 'Warranty' | 'Upsell' | 'Marketing';
 export type OTStatus = 'Open' | 'Diagnosis' | 'WaitingParts' | 'InRepair' | 'Finished' | 'Invoiced' | 'Closed' | 'reception' | 'disassembly' | 'bodywork' | 'paint' | 'admin_close' | 'finished';
-export type RepairStage = 'reception' | 'disassembly' | 'bodywork' | 'paint' | 'admin_close' | 'finished';
+export type RepairStage = 'reception' | 'disassembly' | 'bodywork' | 'paint' | 'admin_close' | 'finished' | 'closed';
 export type BusinessLine = 'Mechanics' | 'Bodywork';
 
 export interface WorkOrderLine { id: string; type: 'Labor' | 'Part' | 'Material' | 'Subcontract'; description: string; quantity: number; unitPrice: number; discount: number; total: number; }

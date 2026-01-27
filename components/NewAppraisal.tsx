@@ -365,7 +365,7 @@ const NewAppraisal: React.FC = () => {
                 <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-black text-slate-400 font-mono tracking-tighter">{tempTicketId}</span>
                 </div>
-                <h1 className="text-2xl font-bold text-slate-900">{activeRole === 'Client' ? 'New Request' : 'Nueva Entrada a Taller'}</h1>
+                <h1 className="text-2xl font-bold text-slate-900">{activeRole === 'Client' ? 'Nueva Solicitud' : 'Nueva Entrada a Taller'}</h1>
                 <div className="flex items-center gap-2 mt-4">
                     {activeRole !== 'Client' && <div className={`h-2 w-12 rounded-full transition-colors ${step >= 1 ? 'bg-brand-600' : 'bg-slate-200'}`}></div>}
                     <div className={`h-2 w-12 rounded-full transition-colors ${step >= 2 ? (activeRole === 'Client' ? 'bg-emerald-500' : 'bg-brand-600') : 'bg-slate-200'}`}></div>
@@ -614,7 +614,7 @@ const NewAppraisal: React.FC = () => {
                                 disabled={isSaving || !vehicleData.plate}
                                 className={`w-full ${activeRole === 'Client' ? 'bg-emerald-500 hover:bg-emerald-400' : 'bg-brand-500 hover:bg-brand-400'} text-white py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 disabled:opacity-30 transition-all active:scale-95 mt-4`}
                             >
-                                {isSaving ? <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : 'SUBMIT REPAIR REQUEST'}
+                                {isSaving ? <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : 'ENVIAR SOLICITUD DE REPARACIÓN'}
                             </button>
                             {!vehicleData.plate && <p className="text-[10px] text-red-400 text-center font-bold">La matrícula es obligatoria.</p>}
                         </div>
