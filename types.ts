@@ -38,6 +38,7 @@ export interface Client {
   tariff: TariffType;
   notes?: string;
   alerts?: string[];
+  workshop_id?: string;
 }
 
 // --- Normalized Role System ---
@@ -150,6 +151,8 @@ export interface CompanyProfile {
   costeHora: number;
   pvpManoObra: number;
   subscriptionTier?: 'free' | 'premium';
+  defaultExpertId?: string;
+  defaultExpertName?: string;
   integrations?: {
     bitrixUrl?: string;
   };

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ValuationRequest, WorkOrder, Client, HourCostCalculation } from '../types';
-import { saveValuationToSupabase, getClientsFromSupabase, getCostCalculations, uploadChatAttachment, saveClientToSupabase, getCompanyProfileFromSupabase, logClientActivity, supabase } from '../services/supabaseClient';
+import { saveValuationToSupabase, getClientsFromSupabase, getCostCalculations, uploadChatAttachment, saveClientToSupabase, getCompanyProfileFromSupabase, getCompanyProfileById, logClientActivity, supabase } from '../services/supabaseClient';
 import { getBitrixUsers, BitrixUser, pushValuationToBitrix } from '../services/bitrixService';
 import ClientForm from './ClientForm';
 
@@ -63,14 +63,16 @@ const NewValuation: React.FC = () => {
 
     const [isLoadingCosts, setIsLoadingCosts] = useState(false);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [workshopId, setWorkshopId] = useState<string | null>(null);
 
     // Load Data on Mount
     useEffect(() => {
         const loadInitialData = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             const role = sessionStorage.getItem('vp_active_role');
+            if (user) setCurrentUserId(user.id);
+
             if (role === 'Client' && user) {
-                setCurrentUserId(user.id);
                 // Pre-fill workshop details from clients table for authentication display
                 const allClients = await getClientsFromSupabase();
                 const me = allClients.find(c => c.id === user.id);
@@ -86,9 +88,23 @@ const NewValuation: React.FC = () => {
                         }
                     }));
                     fetchCosts(me.id); // Auto fetch costs
+
+                    // If client has a workshop_id, fetch that workshop's settings (Default Expert)
+                    if (me.workshop_id) {
+                        setWorkshopId(me.workshop_id);
+                        getCompanyProfileById(me.workshop_id).then(profile => {
+                            if (profile?.defaultExpertId) {
+                                setFormData(prev => ({ ...prev, assignedExpertId: profile.defaultExpertId }));
+                            }
+                        });
+                        handleRefreshBitrixUsers(me.workshop_id);
+                    } else {
+                        handleRefreshBitrixUsers();
+                    }
                 }
             } else {
                 // Admin context
+                if (user) setWorkshopId(user.id);
                 getCompanyProfileFromSupabase().then(profile => {
                     if (profile) {
                         setFormData(prev => ({
@@ -102,10 +118,8 @@ const NewValuation: React.FC = () => {
                         }));
                     }
                 });
+                handleRefreshBitrixUsers();
             }
-
-            // 2. Fetch Bitrix Users independently
-            handleRefreshBitrixUsers();
 
             // 3. Fetch Clients independently (for Admin dropdown)
             if (role !== 'Client') {
@@ -147,7 +161,6 @@ const NewValuation: React.FC = () => {
                     }
                 }
             } else {
-                console.warn("NewValuation: No calculations found.");
                 setCostOptions([]);
             }
         } catch (err) {
@@ -159,10 +172,10 @@ const NewValuation: React.FC = () => {
         }
     };
 
-    const handleRefreshBitrixUsers = async () => {
+    const handleRefreshBitrixUsers = async (wId?: string) => {
         setRefreshingUsers(true);
         try {
-            const bUsers = await getBitrixUsers(true);
+            const bUsers = await getBitrixUsers(true, wId);
             if (bUsers.length > 0) {
                 setBitrixUsers(bUsers);
                 setIsBitrixConnected(true);
@@ -341,9 +354,13 @@ const NewValuation: React.FC = () => {
             }
 
             // Upload Video
+            let finalVideoUrl = '';
             if (uploadedVideo) {
                 const url = await uploadChatAttachment(uploadedVideo);
-                if (url) fileLinks.push({ url, type: 'video' });
+                if (url) {
+                    fileLinks.push({ url, type: 'video' });
+                    finalVideoUrl = url;
+                }
             }
 
             // Upload Documents (PDFs, etc)
@@ -360,7 +377,8 @@ const NewValuation: React.FC = () => {
                 ...formData,
                 claimsStage: formData.claimsStage || 'draft',
                 photos: photoUrls, // Save real cloud URLs
-                documents: docUrls // Save real cloud URLs
+                documents: docUrls, // Save real cloud URLs
+                videoUrl: finalVideoUrl || formData.videoUrl
             } as ValuationRequest;
 
             // --- STEP 3: SAVE TO VALORA PLUS DB ---
@@ -389,14 +407,20 @@ const NewValuation: React.FC = () => {
 
             // --- STEP 4: PUSH TO BITRIX CRM ---
             setStatusMessage('Enviando datos al CRM de Bitrix24...');
-
             const selectedCost = costOptions.find(c => c.periodo === formData.costReference);
 
-            const bitrixResult = await pushValuationToBitrix(finalData, fileLinks, selectedCost);
+            // Fallback: If workshopId is missing, try to get it again from session
+            let finalWorkshopId = workshopId;
+            if (!finalWorkshopId) {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) finalWorkshopId = user.id;
+            }
 
-            if (!bitrixResult) {
-                console.warn("Bitrix push failed, but local data saved.");
-                alert("Solicitud de peritación creada localmente, pero falló el envío a Bitrix24. Por favor, compruebe la conexión de Bitrix.");
+            const bitrixResult = await pushValuationToBitrix(finalData, fileLinks, selectedCost, finalWorkshopId || undefined);
+
+            if (!bitrixResult.success) {
+                console.warn("Bitrix push failed, but local data saved:", bitrixResult.error);
+                alert(`Solicitud guardada localmente, pero falló el envío a Bitrix24.\nError: ${bitrixResult.error}\n\nPor favor, compruebe su URL de Webhook y sus permisos CRM.`);
             }
 
             // --- STEP 5: LOG TO CENTRAL ACTIVITY FEED (HIGH RELIABILITY) ---
@@ -443,24 +467,16 @@ const NewValuation: React.FC = () => {
                     <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
                         <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                     </div>
-                    <h2 className="text-3xl font-bold text-slate-900 mb-4">¡Solicitud Registrada!</h2>
-                    <p className="text-lg text-slate-600 mb-8 max-w-lg mx-auto">
-                        Su expediente <strong>{formData.ticketNumber}</strong> se ha creado correctamente
-                        {formData.workOrderId && <span> y se ha vinculado a la Orden de Trabajo <strong>{formData.workOrderId}</strong></span>}.
-                        <br />Consulte el "Historial de Siniestros" para ver el registro.
+                    <h2 className="text-4xl font-black text-slate-900 mb-4">¡Gracias!</h2>
+                    <p className="text-xl text-slate-600 mb-10 max-w-lg mx-auto font-medium">
+                        Recibirás el informe por correo electrónico
                     </p>
-                    <div className="flex justify-center gap-4">
+                    <div className="flex justify-center">
                         <button
-                            onClick={() => navigate('/claims-planner')}
-                            className="bg-brand-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-brand-700 shadow-lg"
+                            onClick={() => navigate('/valuations')}
+                            className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-black hover:bg-black shadow-xl transition-all hover:-translate-y-1 active:scale-95 uppercase tracking-widest text-sm"
                         >
-                            Ir al Planificador
-                        </button>
-                        <button
-                            onClick={() => navigate('/history-claims')}
-                            className="bg-white text-slate-600 border border-slate-300 px-8 py-3 rounded-lg font-bold hover:bg-slate-50"
-                        >
-                            Ver en Historial
+                            Volver a Solicitudes
                         </button>
                     </div>
                 </div>
@@ -619,6 +635,28 @@ const NewValuation: React.FC = () => {
                                             }
                                         </datalist>
                                     </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Franquicia</label>
+                                        <div className="flex gap-2">
+                                            <select
+                                                className="p-2 border border-slate-300 rounded bg-white text-sm"
+                                                value={formData.franchise?.applies ? 'yes' : 'no'}
+                                                onChange={(e) => handleInputChange('franchise', 'applies', e.target.value === 'yes')}
+                                            >
+                                                <option value="no">Sin Franquicia</option>
+                                                <option value="yes">Con Franquicia</option>
+                                            </select>
+                                            {formData.franchise?.applies && (
+                                                <input
+                                                    type="number"
+                                                    className="flex-1 p-2 border border-slate-300 rounded text-sm"
+                                                    placeholder="Importe €"
+                                                    value={formData.franchise.amount}
+                                                    onChange={(e) => handleInputChange('franchise', 'amount', parseFloat(e.target.value) || 0)}
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {/* COST CALCULATION REFERENCE FIELD */}
@@ -696,12 +734,23 @@ const NewValuation: React.FC = () => {
                                 </div>
 
                                 <h4 className="font-bold text-slate-700 mb-3">Datos del Vehículo</h4>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-500 mb-1">Kilometraje</label>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Matrícula</label>
+                                        <input
+                                            type="text"
+                                            className="w-full p-2 border border-slate-300 rounded text-sm uppercase font-mono"
+                                            placeholder="1234BBB"
+                                            value={formData.vehicle?.plate}
+                                            onChange={(e) => handleInputChange('vehicle', 'plate', e.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Marca</label>
                                         <input
                                             type="text"
                                             className="w-full p-2 border border-slate-300 rounded text-sm"
+                                            placeholder="Ej: Seat"
                                             value={formData.vehicle?.brand}
                                             onChange={(e) => handleInputChange('vehicle', 'brand', e.target.value)}
                                         />
@@ -711,26 +760,29 @@ const NewValuation: React.FC = () => {
                                         <input
                                             type="text"
                                             className="w-full p-2 border border-slate-300 rounded text-sm"
+                                            placeholder="Ej: Ibiza"
                                             value={formData.vehicle?.model}
                                             onChange={(e) => handleInputChange('vehicle', 'model', e.target.value)}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-500 mb-1">Matrícula</label>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">VIN (Bastidor)</label>
                                         <input
                                             type="text"
                                             className="w-full p-2 border border-slate-300 rounded text-sm uppercase font-mono"
-                                            value={formData.vehicle?.plate}
-                                            onChange={(e) => handleInputChange('vehicle', 'plate', e.target.value)}
+                                            placeholder="Número VIN..."
+                                            value={formData.vehicle?.vin || ''}
+                                            onChange={(e) => handleInputChange('vehicle', 'vin', e.target.value)}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-500 mb-1">Km</label>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Kilometraje</label>
                                         <input
                                             type="number"
                                             className="w-full p-2 border border-slate-300 rounded text-sm"
+                                            placeholder="Km actuales"
                                             value={formData.vehicle?.km}
-                                            onChange={(e) => handleInputChange('vehicle', 'km', parseInt(e.target.value))}
+                                            onChange={(e) => handleInputChange('vehicle', 'km', parseInt(e.target.value) || 0)}
                                         />
                                     </div>
                                 </div>
@@ -866,7 +918,7 @@ const NewValuation: React.FC = () => {
                                         </h4>
 
                                         <button
-                                            onClick={handleRefreshBitrixUsers}
+                                            onClick={() => handleRefreshBitrixUsers()}
                                             disabled={refreshingUsers}
                                             className="bg-white border border-slate-300 text-blue-600 p-2 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors disabled:opacity-50"
                                             title="Actualizar lista"
@@ -877,12 +929,29 @@ const NewValuation: React.FC = () => {
                                         </button>
                                     </div>
 
+                                    {(currentUserId) && formData.assignedExpertId && (
+                                        <div className="mb-4 bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex items-center justify-between animate-fade-in shadow-sm">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center font-bold">
+                                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-emerald-600 uppercase">Perito Asignado</p>
+                                                    <p className="text-sm font-bold text-slate-800">
+                                                        {bitrixUsers.find(u => u.ID === formData.assignedExpertId)?.NAME} {bitrixUsers.find(u => u.ID === formData.assignedExpertId)?.LAST_NAME || 'Cargando...'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="text-[10px] bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded font-bold uppercase">Automático</div>
+                                        </div>
+                                    )}
+
                                     <div className="mb-4 bg-slate-50 border border-slate-200 p-3 rounded-lg flex justify-between items-center text-sm">
                                         <span className="text-slate-500 font-medium">Cliente Asignado (Asegurado):</span>
                                         <span className="font-bold text-slate-800">{formData.insuredName || 'No Seleccionado'}</span>
                                     </div>
 
-                                    {!isBitrixConnected ? (
+                                    {(!isBitrixConnected && !currentUserId) ? (
                                         <div className="bg-orange-50 border border-orange-200 text-orange-800 p-4 rounded-lg flex items-center justify-between">
                                             <div className="flex items-center gap-3">
                                                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
@@ -896,7 +965,7 @@ const NewValuation: React.FC = () => {
                                             </button>
                                             <span className="text-xs text-orange-600 ml-4 font-bold">Modo Offline Activado</span>
                                         </div>
-                                    ) : (
+                                    ) : !currentUserId && (
                                         <>
                                             <div className="flex gap-2">
                                                 <div className="relative flex-1">

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { RepairJob, AppRole, Client } from '../types';
-import { getWorkOrdersFromSupabase, getCompanyProfileFromSupabase, getClientsFromSupabase, supabase } from '../services/supabaseClient';
+import { getWorkOrdersFromSupabase, getCompanyProfileFromSupabase, getClientsFromSupabase, getValuationsFromSupabase, supabase } from '../services/supabaseClient';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -12,10 +12,14 @@ const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [activeRole, setActiveRole] = useState<AppRole>('Admin');
   const [stats, setStats] = useState({
+    customers: 0,
+    workOrders: 0,
+    analysisMonth: 0,
+    appraisals: 0,
+    // Client specific stats
     reception: 0,
     inProgress: 0,
-    finished: 0,
-    totalValuation: 0
+    finished: 0
   });
 
   useEffect(() => {
@@ -26,34 +30,55 @@ const Dashboard: React.FC = () => {
 
       const { data: { user } } = await supabase.auth.getUser();
 
-      const [orderData, profile, allClients] = await Promise.all([
+      const [orderData, profile, allClients, valuationData] = await Promise.all([
         getWorkOrdersFromSupabase(),
         getCompanyProfileFromSupabase(),
-        getClientsFromSupabase()
+        getClientsFromSupabase(),
+        getValuationsFromSupabase()
       ]);
 
+      // Current Month Analysis Fetch
+      const firstDay = new Date();
+      firstDay.setDate(1);
+      firstDay.setHours(0, 0, 0, 0);
+
+      const { count: analysisCount } = await supabase
+        .from('analysis_requests')
+        .select('*', { count: 'exact', head: true })
+        .gt('created_at', firstDay.toISOString());
+
       let filteredOrders = orderData;
+      let filteredValuations = valuationData;
 
       if (role === 'Client' && user) {
         const clientProfile = allClients.find(c => c.id === user.id);
         if (clientProfile) setDisplayName(clientProfile.name);
         filteredOrders = orderData.filter(o => o.clientId === user.id);
-      } else if (profile?.companyName) {
-        setDisplayName(profile.companyName);
+        // filteredValuations remains valuationData from line 33 which is already for the workshop context
+      } else {
+        const raw = profile?.companyName || 'Valora Plus';
+        const isBad = raw.toLowerCase().includes('mecanico') || raw.toLowerCase().includes('mecánico') || raw.includes('45');
+        setDisplayName(isBad ? 'Valora Plus' : raw);
       }
 
-      // Sort by newest
       const sorted = filteredOrders.sort((a, b) => new Date(b.entryDate).getTime() - new Date(a.entryDate).getTime());
       setJobs(sorted);
 
-      // Calculate Stats
+      // Calculate Client Stats
       const reception = sorted.filter(j => j.status === 'reception').length;
-      const finished = sorted.filter(j => ['finished', 'closed', 'invoiced'].includes(j.status.toLowerCase())).length;
+      const finished = sorted.filter(j => ['finished', 'closed', 'invoiced', 'admin_close'].includes(j.status.toLowerCase())).length;
       const inProgress = sorted.length - reception - finished;
 
-      const totalVal = sorted.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
+      setStats({
+        customers: role === 'Client' ? 1 : allClients.length,
+        workOrders: filteredOrders.length,
+        analysisMonth: analysisCount || 0,
+        appraisals: filteredValuations.length,
+        reception,
+        inProgress,
+        finished
+      });
 
-      setStats({ reception, inProgress, finished, totalValuation: totalVal });
       setIsLoading(false);
     };
     fetchData();
@@ -98,26 +123,26 @@ const Dashboard: React.FC = () => {
     <div className="p-4 md:p-6">
       <div className="mb-8 flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight uppercase">
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase">
             {isClient ? `Hola, ${displayName}` : 'Panel de Gestión'}
           </h1>
           <p className="text-slate-500 font-medium">
-            {isClient ? 'Siga sus reparaciones activas e historial de mantenimiento.' : 'Bienvenido al centro de gestión profesional.'}
+            {isClient ? 'Siga sus reparaciones activas e historial de mantenimiento.' : 'Bienvenido al centro de gestión profesional'}
           </p>
         </div>
         {isClient && (
           <div className="flex gap-4">
-            <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm text-center">
-              <p className="text-xs text-slate-500 uppercase font-bold">Solicitadas</p>
-              <p className="text-xl font-bold text-blue-600">{stats.reception}</p>
+            <div className="bg-white px-6 py-3 rounded-xl border border-slate-200 shadow-sm text-center min-w-[120px]">
+              <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">Solicitadas</p>
+              <p className="text-2xl font-black text-blue-600">{stats.reception}</p>
             </div>
-            <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm text-center">
-              <p className="text-xs text-slate-500 uppercase font-bold">En Taller</p>
-              <p className="text-xl font-bold text-orange-600">{stats.inProgress}</p>
+            <div className="bg-white px-6 py-3 rounded-xl border border-slate-200 shadow-sm text-center min-w-[120px]">
+              <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">En Taller</p>
+              <p className="text-2xl font-black text-orange-600">{stats.inProgress}</p>
             </div>
-            <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm text-center">
-              <p className="text-xs text-slate-500 uppercase font-bold">Entregas</p>
-              <p className="text-xl font-bold text-green-600">{stats.finished}</p>
+            <div className="bg-white px-6 py-3 rounded-xl border border-slate-200 shadow-sm text-center min-w-[120px]">
+              <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">Entregas</p>
+              <p className="text-2xl font-black text-emerald-600">{stats.finished}</p>
             </div>
           </div>
         )}
@@ -126,107 +151,186 @@ const Dashboard: React.FC = () => {
       {/* QUICK ACTIONS ROW */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
         {canSeeReception && (
-          <Link to="/reception" className={`${isClient ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' : 'bg-brand-600 hover:bg-brand-700 shadow-brand-200'} transition-colors text-white rounded-xl p-6 shadow-lg flex items-center justify-between group`}>
+          <Link to="/reception" className="bg-[#059669] hover:bg-[#047857] transition-colors text-white rounded-2xl p-8 shadow-lg flex items-center justify-between group">
             <div>
-              <h2 className="text-xl font-bold mb-1">{isClient ? 'Solicitar Nueva Reparación' : 'Nueva Entrada Taller'}</h2>
-              <p className={`${isClient ? 'text-emerald-100' : 'text-brand-100'} text-sm`}>
-                {isClient ? 'Suba fotos de los daños de su vehículo.' : 'Registre vehículo, fotos y orden de reparación.'}
-              </p>
+              <h2 className="text-2xl font-bold mb-1">Solicitar Nueva Reparación</h2>
+              <p className="text-emerald-100 opacity-90">Suba fotos de los daños de su vehículo.</p>
             </div>
-            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
             </div>
           </Link>
         )}
 
-        {canSeeValuations && (
-          <Link to="/new-valuation" className="bg-indigo-600 hover:bg-indigo-700 transition-colors text-white rounded-xl p-6 shadow-lg shadow-indigo-200 flex items-center justify-between group">
+        {isClient && (
+          <Link to="/new-valuation" className="bg-[#515ada] hover:bg-[#434bb8] transition-colors text-white rounded-2xl p-8 shadow-lg flex items-center justify-between group">
             <div>
-              <h2 className="text-xl font-bold mb-1">Nueva Peritación</h2>
-              <p className="text-indigo-100 text-sm">Solicite peritación independiente, informes y valoración.</p>
+              <h2 className="text-2xl font-bold mb-1">Nueva Peritación</h2>
+              <p className="text-indigo-100 opacity-90">Solicite peritación independiente, informes y valoración.</p>
             </div>
-            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 011.414.586l5.414 5.414a1 1 0 01.586 1.414V19a2 2 0 01-2 2z" /></svg>
+            <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 011.414.586l5.414 5.414a1 1 0 01.586 1.414V19a2 2 0 01-2 2z" /></svg>
             </div>
           </Link>
         )}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 border-b border-slate-100 gap-4">
-          <div className="flex items-center gap-2">
-            <h3 className="font-bold text-slate-800">{isClient ? 'Mi Historial de Reparaciones' : 'Expedientes Recientes (BD en Vivo)'}</h3>
-            <span className={`${isClient ? 'bg-emerald-50 text-emerald-700' : 'bg-brand-50 text-brand-700'} px-2 py-0.5 rounded-full text-xs font-bold`}>{filteredData.length}</span>
-          </div>
+      {/* MAIN DASHBOARD CONTENT */}
+      {!isClient ? (
+        <div className="max-w-4xl mx-auto space-y-8">
 
-          <div className="relative w-full sm:w-96">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+          {/* OPERATIONAL EFFICIENCY CARD */}
+          <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-2xl shadow-indigo-100 relative overflow-hidden group">
+            <div className="absolute -top-24 -right-24 w-96 h-96 bg-brand-500/10 rounded-full blur-[100px] group-hover:bg-brand-500/20 transition-all duration-700" />
+
+            <div className="relative z-10">
+              <div className="flex items-center gap-4 mb-10">
+                <div className="w-1.5 h-8 bg-brand-500 rounded-full" />
+                <h4 className="text-xs font-black uppercase tracking-[0.4em] text-brand-400">Eficiencia Operativa</h4>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex items-center justify-between p-6 rounded-3xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Nº Clientes</p>
+                    <p className="text-3xl font-black text-white">{stats.customers}</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-brand-500/20 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-6 rounded-3xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Órdenes Creadas</p>
+                    <p className="text-3xl font-black text-white">{stats.workOrders}</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-6 rounded-3xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Análisis Realizados</p>
+                    <p className="text-3xl font-black text-emerald-400">{stats.analysisMonth}</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-6 rounded-3xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Informes Periciales</p>
+                    <p className="text-3xl font-black text-blue-400">{stats.appraisals}</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-blue-500/20 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 011.414.586l5.414 5.414a1 1 0 01.586 1.414V19a2 2 0 01-2 2z" /></svg>
+                  </div>
+                </div>
+              </div>
+
+
             </div>
-            <input
-              type="text"
-              className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-white placeholder-slate-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 sm:text-sm"
-              placeholder="Buscar reparaciones..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
           </div>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="text-xs text-slate-500 uppercase bg-slate-50">
-              <tr>
-                <th className="px-6 py-3">ID</th>
-                <th className="px-6 py-3">Vehículo</th>
-                <th className="px-6 py-3">Fecha Solicitud</th>
-                <th className="px-6 py-3">Estado</th>
-                {!isClient && <th className="px-6 py-3">Acción</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {!isLoading && filteredData.length > 0 ? (
-                filteredData.slice(0, 10).map((item) => (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-slate-50 transition-colors cursor-pointer"
-                    onClick={() => navigate(`/expediente/${item.id}`)}
-                  >
-                    <td className="px-6 py-4 font-bold text-slate-700 font-mono">{item.expedienteId || item.id.substring(0, 8)}</td>
-                    <td className="px-6 py-4 flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded ${isClient ? 'bg-emerald-50 text-emerald-600' : 'bg-brand-50 text-brand-600'} flex items-center justify-center font-bold text-xs`}>
-                        {item.vehicle ? item.vehicle.substring(0, 1) : '?'}
-                      </div>
-                      <div>
-                        <p className="font-medium text-slate-900">{item.vehicle}</p>
-                        <p className="text-xs text-slate-500">{item.plate}</p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-slate-500">{item.entryDate ? new Date(item.entryDate).toLocaleDateString() : '-'}</td>
-                    <td className="px-6 py-4">
-                      <span className={`${getStatusColor(item.status)} px-2 py-1 rounded-full text-xs font-medium border border-opacity-20 border-current`}>
-                        {getStatusLabel(item.status)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-brand-600 font-medium hover:underline">Ver detalles</td>
-                  </tr>
-                ))
-              ) : !isLoading && (
+          {/* SYSTEM STATUS FOOTER */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6 px-4">
+            <div className="flex items-center gap-3 p-4 px-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
+              <div className="relative">
+                <div className="w-3 h-3 bg-emerald-500 rounded-full animate-ping absolute inset-0" />
+                <div className="w-3 h-3 bg-emerald-500 rounded-full relative" />
+              </div>
+              <span className="text-xs font-black uppercase tracking-widest text-slate-600">Sistemas 100% Operativos</span>
+            </div>
+
+            <div className="flex items-center gap-2 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+              <span>Última Sincronización:</span>
+              <span className="text-slate-600">{new Date().toLocaleTimeString()}</span>
+            </div>
+          </div>
+
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 border-b border-slate-100 gap-4">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-slate-800">Mi Historial de Reparaciones</h3>
+              <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full text-xs font-bold">{filteredData.length}</span>
+            </div>
+
+            <div className="relative w-full sm:w-96">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 sm:text-sm"
+                placeholder="Buscar reparaciones..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-slate-500 uppercase bg-slate-50">
                 <tr>
-                  <td colSpan={isClient ? 4 : 5} className="px-6 py-12 text-center text-slate-500">
-                    <div className="flex flex-col items-center gap-2">
-                      <svg className="w-10 h-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 011.414.586l5.414 5.414a1 1 0 01.586 1.414V19a2 2 0 01-2 2z" /></svg>
-                      <p>{isClient ? 'Aún no tiene solicitudes de reparación.' : 'No se encontraron expedientes.'}</p>
-                    </div>
-                  </td>
+                  <th className="px-6 py-4">ID</th>
+                  <th className="px-6 py-4">VEHÍCULO</th>
+                  <th className="px-6 py-4">FECHA SOLICITUD</th>
+                  <th className="px-6 py-4">ESTADO</th>
+                  <th className="px-6 py-4"></th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {!isLoading && filteredData.length > 0 ? (
+                  filteredData.map((item) => (
+                    <tr
+                      key={item.id}
+                      className="hover:bg-slate-50 transition-colors cursor-pointer"
+                      onClick={() => navigate(`/expediente/${item.id}`)}
+                    >
+                      <td className="px-6 py-4 font-bold text-slate-700 font-mono">{item.expedienteId || item.id.substring(0, 8)}</td>
+                      <td className="px-6 py-4 flex items-center gap-3">
+                        <div className="w-8 h-8 rounded bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-xs">
+                          {item.vehicle ? item.vehicle.substring(0, 1) : '?'}
+                        </div>
+                        <div>
+                          <p className="font-medium text-slate-900">{item.vehicle}</p>
+                          <p className="text-xs text-slate-500">{item.plate}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-slate-500">{item.entryDate ? new Date(item.entryDate).toLocaleDateString() : '-'}</td>
+                      <td className="px-6 py-4">
+                        <span className={`${getStatusColor(item.status)} px-4 py-1.5 rounded-full text-xs font-bold border border-opacity-20 border-current inline-flex items-center`}>
+                          {getStatusLabel(item.status)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <span className="text-blue-600 font-bold hover:underline">Ver detalles</span>
+                      </td>
+                    </tr>
+                  ))
+                ) : !isLoading && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                      <div className="flex flex-col items-center gap-2">
+                        <svg className="w-10 h-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 011.414.586l5.414 5.414a1 1 0 01.586 1.414V19a2 2 0 01-2 2z" /></svg>
+                        <p>Aún no tiene solicitudes de reparación.</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

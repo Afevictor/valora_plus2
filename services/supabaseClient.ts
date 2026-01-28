@@ -554,8 +554,16 @@ export const getCompanyProfileFromSupabase = async (): Promise<CompanyProfile | 
         if (error) throw error;
         if (!data) return null;
 
+        const rawName = data.company_name;
+        // Aggressive filter for the unwanted default name
+        const isDefault = !rawName ||
+            rawName.toLowerCase().includes('mecanico') ||
+            rawName.toLowerCase().includes('mecánico') ||
+            rawName.includes('45');
+        const sanitizedName = isDefault ? 'Valora Plus' : rawName;
+
         return {
-            companyName: data.company_name,
+            companyName: sanitizedName,
             cif: data.cif,
             address: data.address,
             city: data.city,
@@ -565,7 +573,12 @@ export const getCompanyProfileFromSupabase = async (): Promise<CompanyProfile | 
             phone: data.phone,
             costeHora: data.coste_hora,
             pvpManoObra: data.pvp_mano_obra,
-            subscriptionTier: data.subscription_tier || 'free'
+            subscriptionTier: data.subscription_tier || 'free',
+            defaultExpertId: data.default_expert_id,
+            defaultExpertName: data.default_expert_name,
+            integrations: {
+                bitrixUrl: data.bitrix_webhook_url || ''
+            }
         };
     } catch (e) {
         logError('getCompanyProfile', e);
@@ -591,6 +604,9 @@ export const saveCompanyProfileToSupabase = async (profile: CompanyProfile) => {
             phone: profile.phone,
             coste_hora: profile.costeHora,
             pvp_mano_obra: profile.pvpManoObra,
+            bitrix_webhook_url: profile.integrations?.bitrixUrl || null,
+            default_expert_id: profile.defaultExpertId || null,
+            default_expert_name: profile.defaultExpertName || null,
             updated_at: new Date().toISOString()
         };
 
@@ -600,6 +616,49 @@ export const saveCompanyProfileToSupabase = async (profile: CompanyProfile) => {
     } catch (e) {
         logError('saveCompanyProfile', e);
         throw e;
+    }
+};
+
+export const getCompanyProfileById = async (id: string): Promise<CompanyProfile | null> => {
+    try {
+        const { data, error } = await supabase
+            .from('company_profiles')
+            .select('*')
+            .eq('id', id)
+            .maybeSingle();
+
+        if (error) throw error;
+        if (!data) return null;
+
+        const rawName = data.company_name;
+        // Aggressive filter for the unwanted default name
+        const isDefault = !rawName ||
+            rawName.toLowerCase().includes('mecanico') ||
+            rawName.toLowerCase().includes('mecánico') ||
+            rawName.includes('45');
+        const sanitizedName = isDefault ? 'Valora Plus' : rawName;
+
+        return {
+            companyName: sanitizedName,
+            cif: data.cif,
+            address: data.address,
+            city: data.city,
+            zipCode: data.zip_code,
+            province: data.province,
+            email: data.email,
+            phone: data.phone,
+            costeHora: data.coste_hora,
+            pvpManoObra: data.pvp_mano_obra,
+            subscriptionTier: data.subscription_tier || 'free',
+            defaultExpertId: data.default_expert_id,
+            defaultExpertName: data.default_expert_name,
+            integrations: {
+                bitrixUrl: data.bitrix_webhook_url || ''
+            }
+        };
+    } catch (e) {
+        logError('getCompanyProfileById', e);
+        return null;
     }
 };
 

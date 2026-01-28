@@ -1,13 +1,12 @@
-
-import { getCompanyProfileFromSupabase } from "./supabaseClient";
+import { getCompanyProfileFromSupabase, getCompanyProfileById, supabase } from "./supabaseClient";
 
 export interface BitrixUser {
-  ID: string;
-  NAME: string;
-  LAST_NAME: string;
-  WORK_POSITION?: string;
-  ACTIVE: boolean;
-  PERSONAL_PHOTO?: string;
+    ID: string;
+    NAME: string;
+    LAST_NAME: string;
+    WORK_POSITION?: string;
+    ACTIVE: boolean;
+    PERSONAL_PHOTO?: string;
 }
 
 // Internal cache to avoid fetching config on every single call if not needed
@@ -16,21 +15,28 @@ let cachedUrl: string | null = null;
 export const clearBitrixCache = () => {
     cachedUrl = null;
 };
+const getWebhookUrl = async (workshopId?: string) => {
+    if (cachedUrl && !workshopId) return cachedUrl;
 
-const getWebhookUrl = async () => {
-    if (cachedUrl) return cachedUrl;
-    
-    const profile = await getCompanyProfileFromSupabase();
-    if (profile?.integrations?.bitrixUrl) {
-        cachedUrl = profile.integrations.bitrixUrl;
-        return cachedUrl;
+    let profile = null;
+    if (workshopId) {
+        profile = await getCompanyProfileById(workshopId);
+    } else {
+        profile = await getCompanyProfileFromSupabase();
     }
-    
-    // Fallback to local storage if user hasn't synced yet (migration support)
-    const local = localStorage.getItem('vp_bitrix_config');
-    if (local) {
-        const parsed = JSON.parse(local);
-        return parsed.url;
+
+    if (profile?.integrations?.bitrixUrl) {
+        if (!workshopId) cachedUrl = profile.integrations.bitrixUrl;
+        return profile.integrations.bitrixUrl;
+    }
+
+    // Fallback to local storage only for current user
+    if (!workshopId) {
+        const local = localStorage.getItem('vp_bitrix_config');
+        if (local) {
+            const parsed = JSON.parse(local);
+            return parsed.url;
+        }
     }
     return null;
 };
@@ -50,66 +56,66 @@ export const testBitrixConnection = async (url: string): Promise<boolean> => {
     }
 };
 
-export const getBitrixUsers = async (forceRefresh = false): Promise<BitrixUser[]> => {
-  if (forceRefresh) {
-      clearBitrixCache();
-  }
-
-  const url = await getWebhookUrl();
-  if (!url) return [];
-
-  try {
-    const baseUrl = url.endsWith('/') ? url : `${url}/`;
-    // Add timestamp to prevent browser caching of the fetch request
-    const response = await fetch(`${baseUrl}user.get?t=${Date.now()}`, {
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-          FILTER: { ACTIVE: true }, 
-          sort: 'LAST_NAME', 
-          order: 'ASC' 
-      }) 
-    });
-
-    const data = await response.json();
-    
-    if (data.result) {
-      return data.result as BitrixUser[];
+export const getBitrixUsers = async (forceRefresh = false, workshopId?: string): Promise<BitrixUser[]> => {
+    if (forceRefresh) {
+        clearBitrixCache();
     }
-    return [];
-  } catch (error) {
-    console.error("Error fetching Bitrix users:", error);
-    return [];
-  }
+
+    const url = await getWebhookUrl(workshopId);
+    if (!url) return [];
+
+    try {
+        const baseUrl = url.endsWith('/') ? url : `${url}/`;
+        // Add timestamp to prevent browser caching of the fetch request
+        const response = await fetch(`${baseUrl}user.get?t=${Date.now()}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                FILTER: { ACTIVE: true },
+                sort: 'LAST_NAME',
+                order: 'ASC'
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.result) {
+            return data.result as BitrixUser[];
+        }
+        return [];
+    } catch (error) {
+        console.error("Error fetching Bitrix users:", error);
+        return [];
+    }
 };
 
 export const getBitrixMessages = async (userId: string): Promise<any[]> => {
-  const url = await getWebhookUrl();
-  if (!url) return [];
+    const url = await getWebhookUrl();
+    if (!url) return [];
 
-  try {
-    const baseUrl = url.endsWith('/') ? url : `${url}/`;
-    
-    // Fetch last 50 messages from the dialog with this specific user
-    const response = await fetch(`${baseUrl}im.dialog.messages.get`, {
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-          DIALOG_ID: userId, // The Bitrix User ID we are chatting with
-          LIMIT: 50
-      }) 
-    });
+    try {
+        const baseUrl = url.endsWith('/') ? url : `${url}/`;
 
-    const data = await response.json();
-    
-    if (data.result && data.result.messages) {
-      return data.result.messages;
+        // Fetch last 50 messages from the dialog with this specific user
+        const response = await fetch(`${baseUrl}im.dialog.messages.get`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                DIALOG_ID: userId, // The Bitrix User ID we are chatting with
+                LIMIT: 50
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.result && data.result.messages) {
+            return data.result.messages;
+        }
+        return [];
+    } catch (error) {
+        console.error("Error fetching Bitrix messages:", error);
+        throw error; // Throw so component knows polling failed
     }
-    return [];
-  } catch (error) {
-    console.error("Error fetching Bitrix messages:", error);
-    throw error; // Throw so component knows polling failed
-  }
 };
 
 export const sendBitrixMessage = async (userId: string, message: string): Promise<boolean> => {
@@ -142,12 +148,18 @@ export const sendBitrixMessage = async (userId: string, message: string): Promis
  * @param costData Optional full cost calculation object (HourCostCalculation)
  */
 export const pushValuationToBitrix = async (
-    valuationData: any, 
+    valuationData: any,
     fileLinks: { url: string, type: 'image' | 'video' | 'doc' }[],
-    costData?: any
-): Promise<boolean> => {
-    const url = await getWebhookUrl();
-    if (!url) return false;
+    costData?: any,
+    workshopId?: string
+): Promise<{ success: boolean; id?: any; error?: string }> => {
+    const url = await getWebhookUrl(workshopId);
+    console.log(`🚀 [BitrixSync] Sync Attempt. Workshop: ${workshopId || 'Self'}, URL: ${url ? 'FOUND' : 'MISSING'}`);
+
+    if (!url) {
+        console.error("❌ [BitrixSync] Integration inactive. No webhook URL found in DB or LocalStorage.");
+        return { success: false, error: 'Configuración Bitrix ausente. Por favor, asegúrese de guardar la URL en Configuración Bitrix24.' };
+    }
 
     try {
         const baseUrl = url.endsWith('/') ? url : `${url}/`;
@@ -171,23 +183,30 @@ export const pushValuationToBitrix = async (
         description += `Insured Name: [B]${valuationData.insuredName}[/B]\n`;
         description += `Insurance Co: ${valuationData.insuranceCompany}\n`;
         description += `Claim Type: ${valuationData.claimType}\n`;
-        description += `Claim Date: ${valuationData.claimDate || 'N/A'}\n\n`;
+        description += `Claim Date: ${valuationData.claimDate || 'N/A'}\n`;
+
+        if (valuationData.franchise?.applies) {
+            description += `Franchise: [COLOR=RED]YES (${valuationData.franchise.amount} €)[/COLOR]\n`;
+        } else {
+            description += `Franchise: NO\n`;
+        }
+        description += `\n`;
 
         // 3. COST CALCULATION (Detailed)
         description += `[B]COST CALCULATION DETAILS[/B]\n`;
         description += `--------------------------\n`;
         description += `Reference Period: ${valuationData.costReference}\n`;
-        
+
         if (costData) {
             const results = costData.resultado_calculo || {};
             const input = costData.payload_input || {};
-            
+
             description += `[B]Internal Hourly Cost: ${results.hourlyCost?.toFixed(2)} €[/B]\n`;
             description += `Annual Personnel Cost: ${results.totalSalary?.toLocaleString()} €\n`;
             description += `Annual Structure Overheads: ${results.totalStructure?.toLocaleString()} €\n`;
             description += `Productive Capacity: ${results.productiveCapacity?.toFixed(0)} hours/year\n`;
             description += `Productive Staff (FTE): ${results.fteProductives?.toFixed(2)}\n\n`;
-            
+
             description += `[B]Operational Variables:[/B]\n`;
             description += `- Shift Hours: ${input.hoursPerDay}h/day\n`;
             description += `- Billable Days: ${input.daysPerYear} days/year\n\n`;
@@ -198,7 +217,7 @@ export const pushValuationToBitrix = async (
                     .filter(([_, val]) => val > 0)
                     .sort((a, b) => b[1] - a[1])
                     .slice(0, 8);
-                
+
                 topExpenses.forEach(([key, val]) => {
                     description += `- ${key.toUpperCase()}: ${val.toLocaleString()} €\n`;
                 });
@@ -239,6 +258,12 @@ export const pushValuationToBitrix = async (
             const typeLabel = f.type ? f.type.toUpperCase() : 'FILE';
             description += `${index + 1}. [URL=${f.url}]View ${typeLabel}[/URL]\n`;
         });
+        description += `\n`;
+
+        // 8. LEGAL
+        description += `[B]LEGAL[/B]\n`;
+        description += `--------------------------\n`;
+        description += `Declaration Accepted: ${valuationData.declarationAccepted ? 'YES' : 'NO'}\n`;
 
         // ----------------------------------------------------
 
@@ -246,22 +271,35 @@ export const pushValuationToBitrix = async (
         const payload = {
             fields: {
                 TITLE: `Appraisal: ${valuationData.vehicle.plate} - ${valuationData.insuredName}`,
-                TYPE_ID: "SERVICE", 
-                STAGE_ID: "NEW",
-                OPENED: "Y", 
-                ASSIGNED_BY_ID: valuationData.assignedExpertId, 
-                COMMENTS: description, 
-                OPPORTUNITY: 0 
+                OPENED: "Y",
+                ASSIGNED_BY_ID: valuationData.assignedExpertId || null,
+                COMMENTS: description,
+                CURRENCY_ID: "EUR",
+                OPPORTUNITY: 0
             }
         };
 
+        console.log("📤 Pushing to Bitrix with Payload:", payload);
+
         const performDealAdd = async (currentPayload: any) => {
-            const response = await fetch(`${baseUrl}crm.deal.add`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(currentPayload)
-            });
-            return await response.json();
+            try {
+                const response = await fetch(`${baseUrl}crm.deal.add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(currentPayload)
+                });
+                if (!response.ok) {
+                    const errText = await response.text();
+                    console.error("❌ Bitrix HTTP Error:", response.status, errText);
+                    return { error: response.status, error_description: errText };
+                }
+                const res = await response.json();
+                console.log("📥 Bitrix Response:", res);
+                return res;
+            } catch (err) {
+                console.error("❌ Bitrix Fetch Exception:", err);
+                return { error: 'fetch_error', error_description: String(err) };
+            }
         };
 
         let data = await performDealAdd(payload);
@@ -288,14 +326,39 @@ export const pushValuationToBitrix = async (
 
         if (data.result) {
             console.log("✅ Created Bitrix Deal ID:", data.result);
-            return true;
+            return { success: true, id: data.result };
         } else {
-            console.error("❌ Bitrix Final Error:", data.error_description);
-            return false;
+            console.error("❌ Bitrix Final Error:", data.error_description || data.error);
+            return { success: false, error: data.error_description || data.error || 'Unknown Error' };
         }
 
     } catch (e) {
         console.error("Exception pushing to Bitrix:", e);
-        return false;
+        return { success: false, error: String(e) };
+    }
+};
+
+export const getBitrixContacts = async (): Promise<any[]> => {
+    const url = await getWebhookUrl();
+    if (!url) return [];
+
+    try {
+        const baseUrl = url.endsWith('/') ? url : `${url}/`;
+        const response = await fetch(`${baseUrl}crm.contact.list`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                select: ['ID', 'NAME', 'LAST_NAME', 'WORK_POSITION']
+            })
+        });
+
+        const data = await response.json();
+        if (data.result) {
+            return data.result;
+        }
+        return [];
+    } catch (e) {
+        console.error("Error fetching Bitrix contacts:", e);
+        return [];
     }
 };

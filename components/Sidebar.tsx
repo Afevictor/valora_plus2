@@ -81,9 +81,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
         }
       } else {
         const profile = await getCompanyProfileFromSupabase();
-        if (profile?.companyName) {
-          setDisplayName(profile.companyName || 'Taller Valora');
-        }
+        const raw = profile?.companyName || 'Valora Plus';
+        // Aggressive sanitization: Check for specific keywords or patterns
+        const isBad = raw.toLowerCase().includes('mecanico') || raw.toLowerCase().includes('mecánico') || raw.includes('45');
+        setDisplayName(isBad ? 'Valora Plus' : raw);
       }
     };
     fetchName();
@@ -139,7 +140,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
               </>
             ) : (
               <>
-
+                <SectionHeader label="Principal" />
+                <NavItem to="/" icon={<DashboardIcon />} label="Panel de Gestión" active={location.pathname === '/'} isClient={false} />
 
                 <SectionHeader label="Peritación & Siniestros" />
                 <NavItem to="/valuations" icon={<ValuationsIcon />} label="Solicitudes Peritación" active={location.pathname === '/valuations'} isClient={false} />
