@@ -82,7 +82,7 @@ const App = () => {
             const isMetadata = currentSession.user?.user_metadata?.user_type === 'workshop';
             const isEffectiveAdmin = isWhitelisted || isMetadata;
 
-            handleAuthSuccess(isEffectiveAdmin ? 'Admin' : 'Client');
+            handleAuthSuccess(isEffectiveAdmin ? 'Admin' : 'Client', false);
           }
         }
       } catch (e) {
@@ -107,9 +107,12 @@ const App = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleAuthSuccess = (role: AppRole) => {
+  const handleAuthSuccess = (role: AppRole, shouldRedirect: boolean = true) => {
     setActiveRole(role);
     sessionStorage.setItem('vp_active_role', role);
+    if (shouldRedirect) {
+      window.location.hash = '#/';
+    }
   };
 
   if (loading) {

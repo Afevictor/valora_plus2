@@ -5,7 +5,7 @@ import { AppRole, Client, ClientType, PaymentMethod, PaymentTerms, ContactChanne
 
 interface AuthProps {
   initialView?: 'login' | 'signup' | 'pin_entry' | 'client_login' | 'client_signup';
-  onAuthSuccess: (role: AppRole) => void;
+  onAuthSuccess: (role: AppRole, shouldRedirect?: boolean) => void;
   onBackToLanding: () => void;
 }
 
