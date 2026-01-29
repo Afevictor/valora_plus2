@@ -157,7 +157,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ initialData, onSubmit, onCancel
                 <div className="bg-slate-50 px-8 py-6 border-b border-slate-200 flex justify-between items-center flex-shrink-0 rounded-t-xl">
                     <div>
                         <h2 className="text-xl font-bold text-slate-800">
-                            {initialData?.id ? 'Perfil del Cliente' : 'Nuevo Cliente'}
+                            {initialData?.id ? 'Perfil del Taller' : 'Nuevo Taller'}
                         </h2>
                         <p className="text-sm text-slate-500">
                             {initialData?.id ? 'Gestión de datos y vista de historial.' : 'Complete todos los campos obligatorios.'}

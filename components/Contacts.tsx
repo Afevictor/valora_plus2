@@ -119,7 +119,10 @@ const Contacts: React.FC = () => {
     const getClientTypeLabel = (type: string) => {
         switch (type) {
             case 'Individual': return 'Particular';
+            case 'Company': return 'Empresa';
             case 'Fleet': return 'Flota';
+            case 'Renting': return 'Renting';
+            case 'Insurance': return 'Aseguradora';
             case 'Leasing': return 'Renting / Empresa';
             default: return type;
         }
@@ -208,7 +211,7 @@ const Contacts: React.FC = () => {
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${client.isCompany ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                {client.isCompany ? 'C' : 'P'}
+                                                {client.isCompany ? 'E' : 'P'}
                                             </div>
                                             <div>
                                                 <p className="font-bold text-slate-800">{client.name}</p>

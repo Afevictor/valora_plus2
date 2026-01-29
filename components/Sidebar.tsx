@@ -129,7 +129,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
           <nav className="flex-1 px-4 py-2 overflow-y-auto custom-scrollbar relative">
             {isClient ? (
               <>
-                <SectionHeader label="Portal del Cliente" />
+                <SectionHeader label="Portal del Taller" />
                 <NavItem to="/" icon={<DashboardIcon />} label="Mis Reparaciones" active={location.pathname === '/'} isClient={true} />
                 <NavItem to="/kanban" icon={<KanbanIcon />} label="Tablero de Progreso" active={location.pathname === '/kanban'} isClient={true} />
                 <NavItem to="/history-ot" icon={<HistoryIcon />} label="Historial Reparaciones" active={location.pathname === '/history-ot'} isClient={true} />
@@ -149,7 +149,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
                 <NavItem to="/history-claims" icon={<ArchiveIcon />} label="Historial Siniestros" active={location.pathname === '/history-claims'} isClient={false} />
 
                 <SectionHeader label="Ventas & Operaciones" />
-                <NavItem to="/contacts" icon={<ContactIcon />} label="Clientes" active={location.pathname === '/contacts'} isClient={false} />
+                <NavItem to="/contacts" icon={<ContactIcon />} label="Talleres" active={location.pathname === '/contacts'} isClient={false} />
                 <NavItem to="/crm" icon={<CrmIcon />} label="CRM / Estrategia" active={location.pathname === '/crm'} isClient={false} />
 
                 <SectionHeader label="Sistema" />
@@ -186,7 +186,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
                 <p className="text-sm font-black text-white truncate leading-tight tracking-tight">{displayName}</p>
                 <div className="flex items-center justify-between mt-0.5">
                   <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${isClient ? 'bg-emerald-500/20 text-emerald-400' : 'bg-brand-500/20 text-brand-400'}`}>
-                    {activeRole || 'User'}
+                    {activeRole === 'Client' ? 'Taller' : (activeRole || 'User')}
                   </span>
                   <button onClick={handleLogout} className="text-[10px] text-red-400/60 font-black hover:text-red-400 transition-colors uppercase tracking-tight font-sans">
                     Cerrar Sesión
