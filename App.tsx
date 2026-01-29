@@ -18,7 +18,7 @@ import ClaimsHistory from './components/ClaimsHistory';
 import Tutorials from './components/Tutorials';
 import Contacts from './components/Contacts';
 import AnalysisReport from './components/AnalysisReport';
-import BitrexConfig from './components/BitrexConfig';
+import BitrixConfig from './components/BitrixConfig';
 import VehicleDetail from './components/VehicleDetail';
 import LandingPage from './components/LandingPage';
 import ClientAnalysisPortal from './components/ClientAnalysisPortal';
@@ -293,7 +293,7 @@ const App = () => {
                 } />
                 <Route path="/bitrix-config" element={
                   <ProtectedRoleRoute allowedRoles={['Admin']} activeRole={activeRole as AppRole}>
-                    <BitrexConfig />
+                    <BitrixConfig />
                   </ProtectedRoleRoute>
                 } />
 

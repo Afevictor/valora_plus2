@@ -45,11 +45,13 @@ const ClaimsHistory: React.FC = () => {
 
     const handleDelete = async (id: string) => {
         if (window.confirm("ADVERTENCIA: Esto eliminará permanentemente esta solicitud de peritación de la base de datos y del Planificador de Siniestros. Esta acción no se puede deshacer. ¿Continuar?")) {
+            console.log("User confirmed deletion for:", id);
             const success = await deleteValuation(id);
             if (success) {
                 setHistory(prev => prev.filter(v => v.id !== id));
+                alert("✅ Registro eliminado correctamente.");
             } else {
-                alert("No se pudo eliminar el registro. Por favor, compruebe la consola.");
+                alert("❌ No se pudo eliminar el registro. Verifique la consola del navegador para más detalles.");
             }
         }
     };
@@ -103,8 +105,8 @@ const ClaimsHistory: React.FC = () => {
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1">
-                <div className="overflow-x-auto">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col">
+                <div className="overflow-x-auto overflow-y-auto flex-1">
                     <table className="w-full text-sm text-left">
                         <thead className="bg-slate-50 text-xs text-slate-500 uppercase border-b border-slate-100 sticky top-0">
                             <tr>

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ValuationRequest, WorkOrder, Client, HourCostCalculation } from '../types';
-import { saveValuationToSupabase, getClientsFromSupabase, getCostCalculations, uploadChatAttachment, saveClientToSupabase, getCompanyProfileFromSupabase, getCompanyProfileById, logClientActivity, supabase } from '../services/supabaseClient';
+import { saveValuationToSupabase, getClientsFromSupabase, getCostCalculations, uploadChatAttachment, saveClientToSupabase, getCompanyProfileFromSupabase, getCompanyProfileById, logClientActivity, supabase, updateValuationStage } from '../services/supabaseClient';
 import { getBitrixUsers, BitrixUser, pushValuationToBitrix } from '../services/bitrixService';
 import ClientForm from './ClientForm';
 
@@ -179,6 +179,21 @@ const NewValuation: React.FC = () => {
             if (bUsers.length > 0) {
                 setBitrixUsers(bUsers);
                 setIsBitrixConnected(true);
+
+                // --- AUTO-SELECT DEFAULT EXPERT ---
+                const { getBitrixSettingsFromSupabase } = await import('../services/supabaseClient');
+                const settings = await getBitrixSettingsFromSupabase(wId);
+
+                if (settings?.default_expert_id) {
+                    const expertExists = bUsers.some((u: any) => String(u.ID) === String(settings.default_expert_id));
+                    if (expertExists) {
+                        console.log("NewValuation: Auto-selecting default expert:", settings.default_expert_id);
+                        setFormData(prev => ({ ...prev, assignedExpertId: settings.default_expert_id }));
+                    }
+                } else if (bUsers.length === 1) {
+                    // If only one user, auto-select it anyway
+                    setFormData(prev => ({ ...prev, assignedExpertId: bUsers[0].ID }));
+                }
             } else {
                 setIsBitrixConnected(false);
                 setBitrixUsers([]);
@@ -312,10 +327,13 @@ const NewValuation: React.FC = () => {
 
     const handleSubmit = async () => {
         // VALIDATION
+        // REMOVED: Mandatory expert selection. We now handle it via auto-select or service-side fallback.
+        /*
         if (isBitrixConnected && bitrixUsers.length > 0 && !formData.assignedExpertId) {
             alert("Por favor, seleccione un usuario de Bitrix24 para asignar como perito.");
             return;
         }
+        */
         if (!formData.insuredName) {
             alert("Por favor, especifique el cliente (Nombre del Asegurado).");
             return;
@@ -384,12 +402,12 @@ const NewValuation: React.FC = () => {
             // --- STEP 3: SAVE TO VALORA PLUS DB ---
             setStatusMessage('Guardando en la base de datos de Valora Plus...');
 
-            // Local Storage (Backup)
-            const existing = JSON.parse(localStorage.getItem('vp_valuations') || '[]');
-            localStorage.setItem('vp_valuations', JSON.stringify([...existing, finalData]));
-
             // Supabase
-            const result = await saveValuationToSupabase(finalData);
+            const result = await saveValuationToSupabase(finalData, workshopId || undefined);
+            if (!result) {
+                console.warn("Database save failed, but proceeding to Bitrix...");
+                alert("⚠️ Error: No se pudo guardar en la base de datos de Valora Plus. Compruebe su conexión o permisos de base de datos.");
+            }
 
             // Update linked WO
             if (formData.workOrderId) {
@@ -420,7 +438,11 @@ const NewValuation: React.FC = () => {
 
             if (!bitrixResult.success) {
                 console.warn("Bitrix push failed, but local data saved:", bitrixResult.error);
-                alert(`Solicitud guardada localmente, pero falló el envío a Bitrix24.\nError: ${bitrixResult.error}\n\nPor favor, compruebe su URL de Webhook y sus permisos CRM.`);
+                alert(`Solicitud guardada en Valora Plus, pero falló el envío al CRM de Bitrix24.\nError: ${bitrixResult.error}`);
+            } else {
+                console.log("✅ Bitrix Push SUCCESS. ID:", bitrixResult.id);
+                // Move to 'sent_expert' stage if successfully pushed to CRM
+                await updateValuationStage(finalData.id, 'sent_expert');
             }
 
             // --- STEP 5: LOG TO CENTRAL ACTIVITY FEED (HIGH RELIABILITY) ---

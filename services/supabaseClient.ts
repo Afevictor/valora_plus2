@@ -728,31 +728,116 @@ export const updateWorkOrderFinancials = async (id: string, updates: { insurance
         return false;
     }
 };
-export const getValuationsFromSupabase = async (): Promise<ValuationRequest[]> => { try { const { data, error } = await supabase.from('valuations').select('*'); if (error) throw error; return data?.map(d => d.raw_data as ValuationRequest) || []; } catch (e) { return []; } };
-export const saveValuationToSupabase = async (val: ValuationRequest) => {
+export const getValuationsFromSupabase = async (): Promise<ValuationRequest[]> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
+
+        const userType = user.user_metadata?.user_type || 'client';
+        const role = sessionStorage.getItem('vp_active_role') || userType;
+
+        console.log("🔍 [DB_FETCH] User:", user.id, "Role:", role);
+        console.log("🔍 [DB_FETCH] User Metadata:", user.user_metadata);
+
+        // TEMPORARY: Fetch ALL records to diagnose the issue
+        let query = supabase.from('valuations').select('*');
+        console.log("🔍 [DB_FETCH] Fetching ALL records (no filter)");
+
+        const { data, error } = await query;
+        if (error) {
+            console.error("❌ [DB_FETCH] Query error:", error);
+            throw error;
+        }
+
+        // Log what we got back
+        console.log("📊 [DB_FETCH] Raw data from DB:", data?.length, "records");
+        if (data && data.length > 0) {
+            console.log("📊 [DB_FETCH] First record workshop_id:", data[0].workshop_id);
+        }
+
+
+        console.log("✅ [DB] Found entries:", data?.length || 0);
+
+        const mapped = data?.map(d => {
+            const raw = (d.raw_data || {}) as ValuationRequest;
+            return {
+                ...raw,
+                id: d.id,
+                workshop_id: d.workshop_id,
+                claimsStage: raw.claimsStage || 'draft',
+                ticketNumber: raw.ticketNumber || raw.id?.substring(0, 8) || d.id.substring(0, 8),
+                requestDate: raw.requestDate || new Date(d.created_at).toLocaleDateString(),
+                vehicle: {
+                    brand: raw.vehicle?.brand || 'S/M',
+                    model: raw.vehicle?.model || 'S/E',
+                    plate: raw.vehicle?.plate || 'S/M',
+                    km: raw.vehicle?.km || 0
+                },
+                insuredName: raw.insuredName || 'S/N',
+                insuranceCompany: raw.insuranceCompany || 'N/A'
+            } as ValuationRequest;
+        }) || [];
+
+        return mapped;
+    } catch (e) {
+        logError('getValuations', e);
+        return [];
+    }
+};
+export const saveValuationToSupabase = async (val: ValuationRequest, overrideWorkshopId?: string) => {
     try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return false;
 
+        const finalWorkshopId = overrideWorkshopId || user.id;
+
         const { error } = await supabase.from('valuations').upsert({
             id: val.id,
-            workshop_id: user.id,
-            raw_data: val
+            workshop_id: finalWorkshopId,
+            raw_data: {
+                ...val,
+                workshop_id: finalWorkshopId // Ensure it's inside the JSON too
+            }
         });
-        if (error) throw error;
+
+        if (error) {
+            console.error("❌ Supabase Save Error:", error);
+            throw error;
+        }
         return true;
     } catch (error) {
+        logError('saveValuation', error);
         return false;
     }
 };
 
 export const deleteValuation = async (id: string) => {
     try {
-        const { error } = await supabase.from('valuations').delete().eq('id', id);
-        if (error) throw error;
-        return { success: true };
+        console.log("🗑️ [DELETE] Attempting to delete valuation:", id);
+
+        // Delete from database
+        const { error, data } = await supabase.from('valuations').delete().eq('id', id);
+        if (error) {
+            console.error("❌ [DELETE] Database Error:", error);
+            throw error;
+        }
+        console.log("✅ [DELETE] Database Success:", data);
+
+        // Also delete from localStorage
+        try {
+            const localData = JSON.parse(localStorage.getItem('vp_valuations') || '[]');
+            const filtered = localData.filter((v: any) => v.id !== id);
+            localStorage.setItem('vp_valuations', JSON.stringify(filtered));
+            console.log("✅ [DELETE] LocalStorage cleaned");
+        } catch (localErr) {
+            console.warn("⚠️ [DELETE] LocalStorage cleanup failed:", localErr);
+        }
+
+        return true;
     } catch (e) {
-        return { success: false, error: logError('deleteValuation', e) };
+        console.error("❌ [DELETE] Failed:", e);
+        logError('deleteValuation', e);
+        return false;
     }
 };
 
@@ -812,5 +897,61 @@ export const addToWorkshopAuth = async (email: string) => {
     } catch (e) {
         logError('addToWorkshopAuth', e);
         return false;
+    }
+};
+
+// --- BITRIX SETTINGS (DEDICATED TABLE) ---
+/**
+ * Fetches Bitrix settings from the dedicated bitrix_settings table.
+ * If workshopId is not provided, it tries to fetch for the current user.
+ */
+export const getBitrixSettingsFromSupabase = async (workshopId?: string) => {
+    try {
+        let finalId = workshopId;
+        if (!finalId) {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return null;
+            finalId = user.id;
+        }
+
+        const { data, error } = await supabase
+            .from('bitrix_settings')
+            .select('*')
+            .eq('workshop_id', finalId)
+            .maybeSingle();
+
+        if (error) throw error;
+        return data;
+    } catch (e) {
+        console.error('getBitrixSettings error:', e);
+        return null;
+    }
+};
+
+/**
+ * Saves Bitrix settings to the dedicated bitrix_settings table.
+ */
+export const saveBitrixSettingsToSupabase = async (webhookUrl: string, expertId?: string, expertName?: string) => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("No authenticated user");
+
+        const payload = {
+            workshop_id: user.id,
+            webhook_url: webhookUrl.trim(),
+            default_expert_id: expertId || null,
+            default_expert_name: expertName || null,
+            updated_at: new Date().toISOString()
+        };
+
+        const { error } = await supabase
+            .from('bitrix_settings')
+            .upsert(payload);
+
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        console.error('saveBitrixSettings error:', e);
+        throw e;
     }
 };

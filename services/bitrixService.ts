@@ -12,42 +12,34 @@ export interface BitrixUser {
 // Internal cache to avoid fetching config on every single call if not needed
 let cachedUrl: string | null = null;
 
-export const clearBitrixCache = () => {
-    cachedUrl = null;
-};
-const getWebhookUrl = async (workshopId?: string) => {
-    if (cachedUrl && !workshopId) return cachedUrl;
+const GLOBAL_FALLBACK_URL = 'https://expertpericial.bitrix24.es/rest/4721/6nwzlcdsvnvp0s2o/';
 
-    let profile = null;
-    if (workshopId) {
-        profile = await getCompanyProfileById(workshopId);
-    } else {
-        profile = await getCompanyProfileFromSupabase();
-    }
-
-    if (profile?.integrations?.bitrixUrl) {
-        if (!workshopId) cachedUrl = profile.integrations.bitrixUrl;
-        return profile.integrations.bitrixUrl;
-    }
-
-    // Fallback to local storage only for current user
-    if (!workshopId) {
-        const local = localStorage.getItem('vp_bitrix_config');
-        if (local) {
-            const parsed = JSON.parse(local);
-            return parsed.url;
+const getSanitizedBaseUrl = (url: string) => {
+    let cleanUrl = url.trim();
+    const suffixesToStrip = [
+        'user.current', 'user.current/', 'user.current.json',
+        'profile', 'profile/', 'profile.json',
+        'crm.deal.add', 'crm.deal.add/', 'crm.deal.add.json',
+        'user.get', 'user.get/', 'user.get.json',
+        'crm.contact.list', 'crm.contact.list/', 'crm.contact.list.json',
+        'imopenlines.crm.chat.user.add.json', 'imopenlines.crm.chat.user.add'
+    ];
+    suffixesToStrip.forEach(suffix => {
+        if (cleanUrl.toLowerCase().endsWith(suffix)) {
+            cleanUrl = cleanUrl.substring(0, cleanUrl.length - suffix.length);
         }
-    }
-    return null;
+    });
+    return cleanUrl.endsWith('/') ? cleanUrl : `${cleanUrl}/`;
+};
+
+const getWebhookUrl = async (workshopId?: string) => {
+    return GLOBAL_FALLBACK_URL;
 };
 
 export const testBitrixConnection = async (url: string): Promise<boolean> => {
     try {
-        const baseUrl = url.endsWith('/') ? url : `${url}/`;
-        // We test with user.current to see if the webhook is valid
-        const response = await fetch(`${baseUrl}user.current`, {
-            method: 'GET'
-        });
+        const baseUrl = getSanitizedBaseUrl(url);
+        const response = await fetch(`${baseUrl}user.current`, { method: 'GET' });
         const data = await response.json();
         return !!data.result;
     } catch (e) {
@@ -57,27 +49,22 @@ export const testBitrixConnection = async (url: string): Promise<boolean> => {
 };
 
 export const getBitrixUsers = async (forceRefresh = false, workshopId?: string): Promise<BitrixUser[]> => {
-    if (forceRefresh) {
-        clearBitrixCache();
-    }
-
     const url = await getWebhookUrl(workshopId);
     if (!url) return [];
 
     try {
-        const baseUrl = url.endsWith('/') ? url : `${url}/`;
-        // Add timestamp to prevent browser caching of the fetch request
-        const response = await fetch(`${baseUrl}user.get?t=${Date.now()}`, {
+        const baseUrl = getSanitizedBaseUrl(url);
+        // Try the standard Bitrix filter format
+        const response = await fetch(`${baseUrl}user.get`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                FILTER: { ACTIVE: true },
-                sort: 'LAST_NAME',
-                order: 'ASC'
+                FILTER: { ACTIVE: "Y" }
             })
         });
 
         const data = await response.json();
+        console.log("📡 [BitrixService] user.get response:", data);
 
         if (data.result) {
             return data.result as BitrixUser[];
@@ -157,12 +144,18 @@ export const pushValuationToBitrix = async (
     console.log(`🚀 [BitrixSync] Sync Attempt. Workshop: ${workshopId || 'Self'}, URL: ${url ? 'FOUND' : 'MISSING'}`);
 
     if (!url) {
-        console.error("❌ [BitrixSync] Integration inactive. No webhook URL found in DB or LocalStorage.");
-        return { success: false, error: 'Configuración Bitrix ausente. Por favor, asegúrese de guardar la URL en Configuración Bitrix24.' };
+        const diagnosticInfo = workshopId ? `Workshop ID provided: ${workshopId}` : `No Workshop ID provided (using current user ID)`;
+        console.error(`❌ [BitrixSync] Integration inactive. ${diagnosticInfo}`);
+        return {
+            success: false,
+            error: `Configuración Bitrix ausente para el originador de esta solicitud.\n\nDiagnóstico: ${diagnosticInfo}\n\nPor favor, guarde la URL en el menú 'Bitrix24 Link' del panel de administración.`
+        };
     }
 
     try {
-        const baseUrl = url.endsWith('/') ? url : `${url}/`;
+        // --- URL SANITIZATION ---
+        const baseUrl = getSanitizedBaseUrl(url);
+        console.log(`📡 [BitrixSync] Using Sanitized URL: ${baseUrl}`);
 
         // --- COMPREHENSIVE DESCRIPTION BUILDER (BBCode) ---
         let description = `[B]VALORA PLUS: NEW APPRAISAL REQUEST[/B]\n`;
@@ -267,12 +260,34 @@ export const pushValuationToBitrix = async (
 
         // ----------------------------------------------------
 
-        // 2. Create the Deal Payload
+        // Create the Deal Payload
+        let finalExpertId = valuationData.assignedExpertId;
+
+        // Fallback: Check for default expert in settings if none assigned
+        if (!finalExpertId) {
+            try {
+                const { getBitrixSettingsFromSupabase } = await import('./supabaseClient');
+                const settings = await getBitrixSettingsFromSupabase(workshopId);
+                if (settings?.default_expert_id) {
+                    finalExpertId = settings.default_expert_id;
+                }
+            } catch (e) { }
+        }
+
+        // ROBUST PLATE EXTRACTION
+        const v = valuationData.vehicle || {};
+        const pRaw = v.plate || (valuationData as any).plate || '';
+        const plateFinal = (pRaw ? String(pRaw).trim().toUpperCase() : 'PENDIENTE');
+
+        console.log("🚀 [BitrixSync] Sending Plate:", plateFinal);
+
         const payload = {
             fields: {
-                TITLE: `Appraisal: ${valuationData.vehicle.plate} - ${valuationData.insuredName}`,
+                TITLE: `PLATE: ${plateFinal}`,
+                CATEGORY_ID: 0,
+                STAGE_ID: "NEW",
                 OPENED: "Y",
-                ASSIGNED_BY_ID: valuationData.assignedExpertId || null,
+                ASSIGNED_BY_ID: finalExpertId || null,
                 COMMENTS: description,
                 CURRENCY_ID: "EUR",
                 OPPORTUNITY: 0
@@ -343,16 +358,18 @@ export const getBitrixContacts = async (): Promise<any[]> => {
     if (!url) return [];
 
     try {
-        const baseUrl = url.endsWith('/') ? url : `${url}/`;
+        const baseUrl = getSanitizedBaseUrl(url);
         const response = await fetch(`${baseUrl}crm.contact.list`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                select: ['ID', 'NAME', 'LAST_NAME', 'WORK_POSITION']
+                select: ['ID', 'NAME', 'LAST_NAME', 'WORK_POSITION'],
+                filter: { "HAS_PHONE": "Y" }
             })
         });
 
         const data = await response.json();
+        console.log("📡 [BitrixService] crm.contact.list response:", data);
         if (data.result) {
             return data.result;
         }
