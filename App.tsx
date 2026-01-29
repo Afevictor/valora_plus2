@@ -272,7 +272,7 @@ const App = () => {
                   </ProtectedRoleRoute>
                 } />
                 <Route path="/crm" element={
-                  <ProtectedRoleRoute allowedRoles={['Admin']} activeRole={activeRole as AppRole}>
+                  <ProtectedRoleRoute allowedRoles={['Admin', 'Client']} activeRole={activeRole as AppRole}>
                     <CRM />
                   </ProtectedRoleRoute>
                 } />

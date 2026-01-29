@@ -137,6 +137,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
                 <NavItem to="/analytics" icon={<ChartIcon />} label="Análisis / Informes" active={location.pathname === '/analytics'} isClient={true} />
                 <NavItem to="/calculator" icon={<CalculatorIcon />} label="Calculadora de Costes" active={location.pathname === '/calculator'} isClient={true} />
                 <NavItem to="/client-area" icon={<UserIcon />} label="Mi Taller (Perfil)" active={location.pathname === '/client-area'} isClient={true} />
+                <NavItem to="/crm" icon={<CrmIcon />} label="CRM / Estrategia" active={location.pathname === '/crm'} isClient={true} />
               </>
             ) : (
               <>
@@ -150,7 +151,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
 
                 <SectionHeader label="Ventas & Operaciones" />
                 <NavItem to="/contacts" icon={<ContactIcon />} label="Talleres" active={location.pathname === '/contacts'} isClient={false} />
-                <NavItem to="/crm" icon={<CrmIcon />} label="CRM / Estrategia" active={location.pathname === '/crm'} isClient={false} />
 
                 <SectionHeader label="Sistema" />
                 <NavItem to="/bitrix-config" icon={<LinkIcon />} label="Bitrix24 Link" active={location.pathname === '/bitrix-config'} isClient={false} />
