@@ -233,10 +233,9 @@ const NewAppraisal: React.FC = () => {
             console.log("[SUBMIT] Targeted Workshop Owner:", workshopOwnerId);
 
             // Robust ID generation
-            const dbId = window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now();
             const vehicleId = window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now();
 
-            console.log("[SUBMIT] Generated IDs:", { dbId, vehicleId });
+            console.log("[SUBMIT] Generated IDs:", { workOrderId: tempTicketId, vehicleId });
 
             // 1. Guardar Vehículo
             console.log("[SUBMIT] Saving vehicle...");
@@ -257,7 +256,7 @@ const NewAppraisal: React.FC = () => {
             // 2. Guardar Orden de Trabajo
             console.log("[SUBMIT] Saving work order...");
             const newOrder: WorkOrder = {
-                id: dbId,
+                id: tempTicketId, // Use OT-YYYY-XXXX format instead of UUID
                 expedienteId: tempTicketId,
                 clientId: selectedClient.id,
                 vehicleId: vehicleId,
@@ -289,7 +288,7 @@ const NewAppraisal: React.FC = () => {
                 const filename = `${timestamp}_${safeName}`;
 
                 // Simplified storage path to ensure compatibility
-                const storagePath = `${workshopOwnerId}/${dbId}/${filename}`;
+                const storagePath = `${workshopOwnerId}/${tempTicketId}/${filename}`;
 
                 console.log(`[FILE] Uploading ${staged.file.name} to bucket ${staged.bucket}...`);
                 const uploadedPath = await uploadWorkshopFile(staged.file, staged.bucket, storagePath);
@@ -298,7 +297,7 @@ const NewAppraisal: React.FC = () => {
                     console.log(`[FILE] Success! Path: ${uploadedPath}. Saving metadata...`);
                     await saveFileMetadata({
                         workshop_id: workshopOwnerId,
-                        expediente_id: dbId,
+                        expediente_id: tempTicketId,
                         original_filename: staged.file.name,
                         category: staged.category || 'General',
                         storage_path: uploadedPath,
@@ -317,7 +316,7 @@ const NewAppraisal: React.FC = () => {
             const activityFiles: any[] = [];
             for (const staged of stagedFiles) {
                 // We need the public URL for the feed
-                const { data: { publicUrl } } = supabase.storage.from(staged.bucket).getPublicUrl(`${workshopOwnerId}/${dbId}/${staged.file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase()}`);
+                const { data: { publicUrl } } = supabase.storage.from(staged.bucket).getPublicUrl(`${workshopOwnerId}/${tempTicketId}/${staged.file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase()}`);
                 activityFiles.push({
                     url: publicUrl,
                     name: staged.file.name,
@@ -329,7 +328,7 @@ const NewAppraisal: React.FC = () => {
             await logClientActivity({
                 client_id: selectedClient.id,
                 plate: vehicleData.plate,
-                expediente_id: dbId,
+                expediente_id: tempTicketId,
                 activity_type: 'appraisal_request',
                 summary: repairDetails.description || 'New repair request submitted.',
                 file_assets: activityFiles,
