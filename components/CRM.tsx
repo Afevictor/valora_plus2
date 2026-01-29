@@ -159,7 +159,7 @@ const CRM: React.FC = () => {
                                     )}
                                     {quotes.map(q => (
                                         <tr key={q.id} className="hover:bg-slate-50">
-                                            <td className="px-6 py-4 whitespace-nowrap font-medium text-brand-600">{q.id}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap font-medium text-brand-600">{q.number || q.id}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{q.date}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-800 font-bold">{getWorkOrderRef(q.workOrderId)}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-800">{q.total.toFixed(2)} €</td>

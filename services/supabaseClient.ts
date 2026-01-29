@@ -862,9 +862,15 @@ export const saveQuote = async (q: Quote) => {
         if (!user) return false;
 
         const { error } = await supabase.from('quotes').upsert({ id: q.id, workshop_id: user.id, raw_data: q });
-        if (error) throw error;
+        if (error) {
+            console.error("❌ [saveQuote] Error:", error);
+            throw error;
+        }
         return true;
-    } catch (error) { return false; }
+    } catch (error) {
+        logError('saveQuote', error);
+        return false;
+    }
 };
 export const deleteQuote = async (id: string) => {
     try {
@@ -890,9 +896,15 @@ export const saveOpportunity = async (o: Opportunity) => {
         if (!user) return false;
 
         const { error } = await supabase.from('opportunities').upsert({ id: o.id, workshop_id: user.id, raw_data: o });
-        if (error) throw error;
+        if (error) {
+            console.error("❌ [saveOpportunity] Error:", error);
+            throw error;
+        }
         return true;
-    } catch (error) { return false; }
+    } catch (error) {
+        logError('saveOpportunity', error);
+        return false;
+    }
 };
 export const deleteOpportunity = async (id: string) => {
     try {

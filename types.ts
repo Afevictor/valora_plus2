@@ -205,6 +205,7 @@ export type QuoteStatus = 'Draft' | 'Sent' | 'Accepted' | 'Rejected' | 'Closed W
 
 export interface Quote {
   id: string;
+  number: string;
   clientId: string;
   workOrderId?: string;
   vehicleId: string;
@@ -216,6 +217,7 @@ export interface Quote {
 
 export interface Opportunity {
   id: string;
+  number: string;
   clientId: string;
   workOrderId?: string;
   vehicleId: string;

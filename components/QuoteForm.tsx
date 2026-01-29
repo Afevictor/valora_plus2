@@ -52,7 +52,8 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ onSubmit, onCancel }) => {
         }
 
         const newQuote: Quote = {
-            id: refId,
+            id: window.crypto.randomUUID(),
+            number: refId,
             clientId: selectedClientId,
             workOrderId: selectedWorkOrderId,
             vehicleId: '',
@@ -70,7 +71,8 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ onSubmit, onCancel }) => {
                 return;
             }
             newOpp = {
-                id: `OPP-${Date.now()}`,
+                id: window.crypto.randomUUID(),
+                number: `OPP-${Date.now()}`,
                 clientId: selectedClientId,
                 workOrderId: selectedWorkOrderId,
                 vehicleId: '',
