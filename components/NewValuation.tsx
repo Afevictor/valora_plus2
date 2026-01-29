@@ -25,7 +25,7 @@ const NewValuation: React.FC = () => {
     // Form State
     const [formData, setFormData] = useState<Partial<ValuationRequest>>({
         id: crypto.randomUUID(), // Valid UUID for DB
-        ticketNumber: `VAL-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`, // Readable Ticket ID
+        ticketNumber: `OT-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`, // Readable Ticket ID in OT format
         workOrderId: '',
         assignedExpertId: '',
         costReference: '', // Required field
