@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ValuationRequest, WorkOrder, Client, HourCostCalculation } from '../types';
-import { saveValuationToSupabase, getClientsFromSupabase, getCostCalculations, uploadChatAttachment, saveClientToSupabase, getCompanyProfileFromSupabase, getCompanyProfileById, logClientActivity, supabase, updateValuationStage } from '../services/supabaseClient';
+import { ValuationRequest, WorkOrder, Client, HourCostCalculation, RepairJob } from '../types';
+import { saveValuationToSupabase, getClientsFromSupabase, getCostCalculations, uploadChatAttachment, saveClientToSupabase, getCompanyProfileFromSupabase, getCompanyProfileById, logClientActivity, supabase, updateValuationStage, getWorkOrdersFromSupabase } from '../services/supabaseClient';
 import { getBitrixUsers, BitrixUser, pushValuationToBitrix } from '../services/bitrixService';
 import ClientForm from './ClientForm';
 
@@ -60,6 +60,7 @@ const NewValuation: React.FC = () => {
     const [costOptions, setCostOptions] = useState<HourCostCalculation[]>([]);
     const [refreshingUsers, setRefreshingUsers] = useState(false);
     const [showClientModal, setShowClientModal] = useState(false);
+    const [availableWorkOrders, setAvailableWorkOrders] = useState<RepairJob[]>([]);
 
     const [isLoadingCosts, setIsLoadingCosts] = useState(false);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -88,6 +89,11 @@ const NewValuation: React.FC = () => {
                         }
                     }));
                     fetchCosts(me.id); // Auto fetch costs
+
+                    // Fetch client's work orders
+                    const workOrders = await getWorkOrdersFromSupabase();
+                    console.log('Fetched work orders for client:', workOrders);
+                    setAvailableWorkOrders(workOrders);
 
                     // If client has a workshop_id, fetch that workshop's settings (Default Expert)
                     if (me.workshop_id) {
@@ -278,6 +284,27 @@ const NewValuation: React.FC = () => {
         }
     };
 
+    const handleWorkOrderSelection = (workOrderId: string) => {
+        const selectedWO = availableWorkOrders.find(wo => wo.id === workOrderId);
+        if (selectedWO) {
+            console.log('Selected work order:', selectedWO);
+            setFormData(prev => ({
+                ...prev,
+                workOrderId: selectedWO.id,
+                ticketNumber: selectedWO.id, // Replace VAL-XXXX with OT-XXXX
+                vehicle: {
+                    brand: selectedWO.vehicle?.split(' ')[0] || '',
+                    model: selectedWO.vehicle?.split(' ').slice(1).join(' ') || '',
+                    plate: selectedWO.plate || '',
+                    km: selectedWO.currentKm || 0
+                },
+                insuredName: selectedWO.insuredName || prev.insuredName,
+                insuranceCompany: selectedWO.insurance?.company || '',
+                claimDate: selectedWO.entryDate || '',
+            }));
+        }
+    };
+
     const handleCreateClient = async (newClient: Client) => {
         await saveClientToSupabase(newClient);
         setClients(prev => [...prev, newClient]);
@@ -334,6 +361,11 @@ const NewValuation: React.FC = () => {
             return;
         }
         */
+        // Validate Work Order selection for clients
+        if (currentUserId && availableWorkOrders.length > 0 && !formData.workOrderId) {
+            alert("Por favor, seleccione una Orden de Trabajo (OT) de la lista.");
+            return;
+        }
         if (!formData.insuredName) {
             alert("Por favor, especifique el cliente (Nombre del Asegurado).");
             return;
@@ -539,6 +571,33 @@ const NewValuation: React.FC = () => {
                     </div>
 
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 min-h-[500px] flex flex-col justify-between">
+
+                        {/* WORK ORDER SELECTION - Only for Clients */}
+                        {currentUserId && availableWorkOrders.length > 0 && (
+                            <div className="mb-6 p-4 bg-gradient-to-r from-brand-50 to-blue-50 border-2 border-brand-200 rounded-xl">
+                                <label className="block text-sm font-bold text-slate-800 mb-2 flex items-center gap-2">
+                                    <svg className="w-5 h-5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    Seleccionar Orden de Trabajo (OT) <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                    className="w-full p-3 border-2 border-brand-300 rounded-lg text-sm bg-white appearance-none focus:ring-2 focus:ring-brand-500 outline-none font-medium"
+                                    value={formData.workOrderId || ''}
+                                    onChange={(e) => handleWorkOrderSelection(e.target.value)}
+                                >
+                                    <option value="">-- Seleccione una Orden de Trabajo --</option>
+                                    {availableWorkOrders.map(wo => (
+                                        <option key={wo.id} value={wo.id}>
+                                            {wo.id} - {wo.vehicle} ({wo.plate}) - {wo.insuredName}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-slate-600 mt-2 ml-1">
+                                    Al seleccionar una OT, se rellenarán automáticamente los datos del vehículo y cliente.
+                                </p>
+                            </div>
+                        )}
 
                         {/* STEP 1: WORKSHOP DATA */}
                         {step === 1 && (
