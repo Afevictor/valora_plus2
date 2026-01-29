@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Quote, Opportunity, Client, QuoteStatus, RepairType } from '../types';
-import { getClientsFromSupabase } from '../services/supabaseClient';
+import { Quote, Opportunity, Client, QuoteStatus, RepairType, RepairJob } from '../types';
+import { getClientsFromSupabase, getWorkOrdersFromSupabase } from '../services/supabaseClient';
 
 interface QuoteFormProps {
     onSubmit: (quote: Quote, opportunity?: Opportunity) => void;
@@ -10,6 +10,7 @@ interface QuoteFormProps {
 
 const QuoteForm: React.FC<QuoteFormProps> = ({ onSubmit, onCancel }) => {
     const [clients, setClients] = useState<Client[]>([]);
+    const [workOrders, setWorkOrders] = useState<RepairJob[]>([]);
 
     // Quote State
     const [refId] = useState(`QT-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`);
@@ -17,6 +18,7 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ onSubmit, onCancel }) => {
     const [amount, setAmount] = useState<string>('');
     const [status, setStatus] = useState<QuoteStatus>('Draft');
     const [selectedClientId, setSelectedClientId] = useState<string>('');
+    const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string>('');
 
     // Opportunity State
     const [addOpportunity, setAddOpportunity] = useState(false);
@@ -26,11 +28,15 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ onSubmit, onCancel }) => {
     const [oppType, setOppType] = useState<RepairType>('Maintenance');
 
     useEffect(() => {
-        const loadClients = async () => {
-            const data = await getClientsFromSupabase();
-            setClients(data);
+        const loadData = async () => {
+            const [cData, wData] = await Promise.all([
+                getClientsFromSupabase(),
+                getWorkOrdersFromSupabase()
+            ]);
+            setClients(cData);
+            setWorkOrders(wData);
         };
-        loadClients();
+        loadData();
     }, []);
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -48,6 +54,7 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ onSubmit, onCancel }) => {
         const newQuote: Quote = {
             id: refId,
             clientId: selectedClientId,
+            workOrderId: selectedWorkOrderId,
             vehicleId: '',
             date: createdAt,
             total: parseFloat(amount),
@@ -65,6 +72,7 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ onSubmit, onCancel }) => {
             newOpp = {
                 id: `OPP-${Date.now()}`,
                 clientId: selectedClientId,
+                workOrderId: selectedWorkOrderId,
                 vehicleId: '',
                 type: oppType,
                 description: oppDescription,
@@ -100,18 +108,31 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ onSubmit, onCancel }) => {
                             <input type="date" value={createdAt} disabled className="w-full p-2 bg-slate-100 border border-slate-200 rounded text-slate-600" />
                         </div>
                         <div className="md:col-span-2">
-                            <label className="block text-sm font-bold text-slate-700 mb-1">Cliente <span className="text-red-500">*</span></label>
+                            <label className="block text-sm font-bold text-slate-700 mb-1">Orden de Trabajo (OT) <span className="text-red-500">*</span></label>
                             <select
                                 className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-brand-500"
-                                value={selectedClientId}
-                                onChange={(e) => setSelectedClientId(e.target.value)}
+                                value={selectedWorkOrderId}
+                                onChange={(e) => {
+                                    const woId = e.target.value;
+                                    setSelectedWorkOrderId(woId);
+                                    const wo = workOrders.find(w => w.id === woId);
+                                    if (wo && wo.clientId) {
+                                        setSelectedClientId(wo.clientId);
+                                    }
+                                }}
                                 required
                             >
-                                <option value="">-- Seleccionar Cliente --</option>
-                                {clients.map(c => (
-                                    <option key={c.id} value={c.id}>{c.name} {c.taxId ? `(${c.taxId})` : ''}</option>
+                                <option value="">-- Seleccionar OT --</option>
+                                {workOrders.map(wo => (
+                                    <option key={wo.id} value={wo.id}>{wo.expedienteId} - {wo.vehicle} ({wo.plate})</option>
                                 ))}
                             </select>
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-bold text-slate-700 mb-1">Cliente Asociado</label>
+                            <div className="w-full p-2 bg-slate-50 border border-slate-200 rounded text-slate-600">
+                                {selectedClientId ? (clients.find(c => c.id === selectedClientId)?.name || 'Cargando...') : 'Seleccione una OT primero'}
+                            </div>
                         </div>
                         <div>
                             <label className="block text-sm font-bold text-slate-700 mb-1">Importe Total (€) <span className="text-red-500">*</span></label>

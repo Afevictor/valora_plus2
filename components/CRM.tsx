@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Quote, Opportunity, Client } from '../types';
-import { getQuotes, getOpportunities, saveQuote, saveOpportunity, getClientsFromSupabase, deleteQuote, deleteOpportunity } from '../services/supabaseClient';
+import { Quote, Opportunity, Client, RepairJob } from '../types';
+import { getQuotes, getOpportunities, saveQuote, saveOpportunity, getClientsFromSupabase, deleteQuote, deleteOpportunity, getWorkOrdersFromSupabase } from '../services/supabaseClient';
 import QuoteForm from './QuoteForm';
 
 const CRM: React.FC = () => {
@@ -9,6 +9,7 @@ const CRM: React.FC = () => {
     const [quotes, setQuotes] = useState<Quote[]>([]);
     const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
+    const [workOrders, setWorkOrders] = useState<RepairJob[]>([]);
     const [loading, setLoading] = useState(true);
     const [showQuoteModal, setShowQuoteModal] = useState(false);
 
@@ -18,20 +19,28 @@ const CRM: React.FC = () => {
 
     const fetchData = async () => {
         setLoading(true);
-        const [q, o, c] = await Promise.all([
+        const [q, o, c, w] = await Promise.all([
             getQuotes(),
             getOpportunities(),
-            getClientsFromSupabase()
+            getClientsFromSupabase(),
+            getWorkOrdersFromSupabase()
         ]);
         setQuotes(q);
         setOpportunities(o);
         setClients(c);
+        setWorkOrders(w);
         setLoading(false);
     };
 
     const getClientName = (id: string) => {
         const c = clients.find(cl => cl.id === id);
         return c ? c.name : 'Cliente Desconocido';
+    };
+
+    const getWorkOrderRef = (id: string | undefined) => {
+        if (!id) return 'N/D';
+        const wo = workOrders.find(w => w.id === id);
+        return wo ? wo.expedienteId : 'N/D';
     };
 
     const handleSaveNew = async (newQuote: Quote, newOpp?: Opportunity) => {
@@ -134,9 +143,9 @@ const CRM: React.FC = () => {
                             <table className="min-w-full divide-y divide-slate-200">
                                 <thead className="bg-slate-50">
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ref</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ref Presupuesto</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Fecha</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Cliente</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Expediente / OT</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Importe</th>
                                         <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Estado</th>
                                         <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Acciones</th>
@@ -152,7 +161,7 @@ const CRM: React.FC = () => {
                                         <tr key={q.id} className="hover:bg-slate-50">
                                             <td className="px-6 py-4 whitespace-nowrap font-medium text-brand-600">{q.id}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{q.date}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-800 font-bold">{getClientName(q.clientId)}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-800 font-bold">{getWorkOrderRef(q.workOrderId)}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-800">{q.total.toFixed(2)} €</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-center">
                                                 <span className={`px-2 py-1 rounded-full text-xs font-bold ${getStatusBadge(q.status)}`}>{getStatusLabel(q.status)}</span>
@@ -195,7 +204,7 @@ const CRM: React.FC = () => {
                                         <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-bold uppercase">{opt.type === 'Upsell' ? 'Venta Adicional' : opt.type === 'Marketing' ? 'Marketing' : 'Mantenimiento'}</span>
                                         <span className={`text-xs font-bold ${opt.status === 'Pending' ? 'text-orange-500' : 'text-green-500'}`}>{getStatusLabel(opt.status)}</span>
                                     </div>
-                                    <h3 className="font-bold text-slate-800 mb-1">{getClientName(opt.clientId)}</h3>
+                                    <h3 className="font-bold text-slate-800 mb-1">OT: {getWorkOrderRef(opt.workOrderId)}</h3>
                                     <p className="text-sm text-slate-600 mb-2">{opt.description}</p>
                                     <p className="text-sm text-slate-500 mb-4">Valor Est.: <span className="font-semibold text-slate-700">{opt.estimatedValue} €</span></p>
 

@@ -847,7 +847,15 @@ export const uploadChatAttachment = async (file: File) => { try { const fn = `${
 export const updateValuationStage = async (id: string, s: ClaimsStage) => { try { const { data: val } = await supabase.from('valuations').select('raw_data').eq('id', id).single(); if (!val) return false; const ur = { ...val.raw_data, claimsStage: s }; const { error } = await supabase.from('valuations').update({ raw_data: ur }).eq('id', id); if (error) throw error; return true; } catch (e) { return false; } };
 export const saveBitrixConfig = async (u: string) => { try { const p = await getCompanyProfileFromSupabase(); if (!p) return false; const up = { ...p, integrations: { ...p.integrations, bitrixUrl: u } }; return await saveCompanyProfileToSupabase(up); } catch (e) { return false; } };
 
-export const getQuotes = async (): Promise<Quote[]> => { try { const { data, error } = await supabase.from('quotes').select('*'); if (error) throw error; return data?.map(d => d.raw_data as Quote) || []; } catch (e) { return []; } };
+export const getQuotes = async (): Promise<Quote[]> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
+        const { data, error } = await supabase.from('quotes').select('*').eq('workshop_id', user.id);
+        if (error) throw error;
+        return data?.map(d => d.raw_data as Quote) || [];
+    } catch (e) { return []; }
+};
 export const saveQuote = async (q: Quote) => {
     try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -867,7 +875,15 @@ export const deleteQuote = async (id: string) => {
         return { success: false, error: logError('deleteQuote', error) };
     }
 };
-export const getOpportunities = async (): Promise<Opportunity[]> => { try { const { data, error } = await supabase.from('opportunities').select('*'); if (error) throw error; return data?.map(d => d.raw_data as Opportunity) || []; } catch (e) { return []; } };
+export const getOpportunities = async (): Promise<Opportunity[]> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
+        const { data, error } = await supabase.from('opportunities').select('*').eq('workshop_id', user.id);
+        if (error) throw error;
+        return data?.map(d => d.raw_data as Opportunity) || [];
+    } catch (e) { return []; }
+};
 export const saveOpportunity = async (o: Opportunity) => {
     try {
         const { data: { user } } = await supabase.auth.getUser();
