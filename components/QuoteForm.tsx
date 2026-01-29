@@ -9,7 +9,6 @@ interface QuoteFormProps {
 }
 
 const QuoteForm: React.FC<QuoteFormProps> = ({ onSubmit, onCancel }) => {
-    const [clients, setClients] = useState<Client[]>([]);
     const [workOrders, setWorkOrders] = useState<RepairJob[]>([]);
 
     // Quote State
@@ -29,11 +28,7 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ onSubmit, onCancel }) => {
 
     useEffect(() => {
         const loadData = async () => {
-            const [cData, wData] = await Promise.all([
-                getClientsFromSupabase(),
-                getWorkOrdersFromSupabase()
-            ]);
-            setClients(cData);
+            const wData = await getWorkOrdersFromSupabase();
             setWorkOrders(wData);
         };
         loadData();
@@ -130,12 +125,7 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ onSubmit, onCancel }) => {
                                 ))}
                             </select>
                         </div>
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-bold text-slate-700 mb-1">Cliente Asociado</label>
-                            <div className="w-full p-2 bg-slate-50 border border-slate-200 rounded text-slate-600">
-                                {selectedClientId ? (clients.find(c => c.id === selectedClientId)?.name || 'Cargando...') : 'Seleccione una OT primero'}
-                            </div>
-                        </div>
+
                         <div>
                             <label className="block text-sm font-bold text-slate-700 mb-1">Importe Total (€) <span className="text-red-500">*</span></label>
                             <input
