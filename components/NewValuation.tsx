@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ValuationRequest, WorkOrder, Client, HourCostCalculation, RepairJob } from '../types';
 import { saveValuationToSupabase, getClientsFromSupabase, getCostCalculations, uploadChatAttachment, saveClientToSupabase, getCompanyProfileFromSupabase, getCompanyProfileById, logClientActivity, supabase, updateValuationStage, getWorkOrdersFromSupabase } from '../services/supabaseClient';
-import { getBitrixUsers, BitrixUser, pushValuationToBitrix } from '../services/bitrixService';
+import { getBitrixUsers, BitrixUser, pushValuationToBitrix, getBitrixContacts } from '../services/bitrixService';
 import ClientForm from './ClientForm';
 
 const CLAIM_TYPES = ['Colisión', 'Robo', 'Incendio', 'Lunas', 'Fenómeno Atmosférico', 'Vandalismo', 'Daños Propios'];
@@ -181,9 +181,26 @@ const NewValuation: React.FC = () => {
     const handleRefreshBitrixUsers = async (wId?: string) => {
         setRefreshingUsers(true);
         try {
-            const bUsers = await getBitrixUsers(true, wId);
-            if (bUsers.length > 0) {
-                setBitrixUsers(bUsers);
+            // Fetch both Users and CRM Contacts (like in BitrixConfig)
+            const [bUsers, bContacts] = await Promise.all([
+                getBitrixUsers(true, wId),
+                getBitrixContacts() // This service function handles its own URL resolution usually
+            ]);
+
+            // Map Contacts to BitrixUser format with prefixed ID to avoid collisions
+            const mappedContacts = bContacts.map((c: any) => ({
+                ID: `contact_${c.ID}`, // Prefix to distinguish and avoid ID collision
+                NAME: c.NAME,
+                LAST_NAME: c.LAST_NAME,
+                WORK_POSITION: c.WORK_POSITION || 'Contacto Externo',
+                ACTIVE: true,
+                IS_CONTACT: true
+            } as BitrixUser));
+
+            const allExperts = [...bUsers, ...mappedContacts];
+
+            if (allExperts.length > 0) {
+                setBitrixUsers(allExperts);
                 setIsBitrixConnected(true);
 
                 // --- AUTO-SELECT DEFAULT EXPERT ---
@@ -191,14 +208,16 @@ const NewValuation: React.FC = () => {
                 const settings = await getBitrixSettingsFromSupabase(wId);
 
                 if (settings?.default_expert_id) {
-                    const expertExists = bUsers.some((u: any) => String(u.ID) === String(settings.default_expert_id));
+                    const expertExists = allExperts.some((u: any) => String(u.ID) === String(settings.default_expert_id));
                     if (expertExists) {
                         console.log("NewValuation: Auto-selecting default expert:", settings.default_expert_id);
                         setFormData(prev => ({ ...prev, assignedExpertId: settings.default_expert_id }));
+                    } else {
+                        console.warn("NewValuation: Default expert ID found in settings but not in fetched list.", settings.default_expert_id);
                     }
-                } else if (bUsers.length === 1) {
+                } else if (allExperts.length === 1) {
                     // If only one user, auto-select it anyway
-                    setFormData(prev => ({ ...prev, assignedExpertId: bUsers[0].ID }));
+                    setFormData(prev => ({ ...prev, assignedExpertId: allExperts[0].ID }));
                 }
             } else {
                 setIsBitrixConnected(false);
@@ -284,14 +303,14 @@ const NewValuation: React.FC = () => {
         }
     };
 
-    const handleWorkOrderSelection = (workOrderId: string) => {
-        const selectedWO = availableWorkOrders.find(wo => wo.id === workOrderId);
+    const handleWorkOrderSelection = (identifier: string) => {
+        const selectedWO = availableWorkOrders.find(wo => (wo.expedienteId || wo.id) === identifier);
         if (selectedWO) {
             console.log('Selected work order:', selectedWO);
             setFormData(prev => ({
                 ...prev,
-                workOrderId: selectedWO.id,
-                ticketNumber: selectedWO.id, // Replace VAL-XXXX with OT-XXXX
+                workOrderId: identifier, // Store the friendly ID (OT-XXXX) or fallback UUID
+                ticketNumber: identifier, // Use same ID for ticket number
                 vehicle: {
                     brand: selectedWO.vehicle?.split(' ')[0] || '',
                     model: selectedWO.vehicle?.split(' ').slice(1).join(' ') || '',
@@ -466,7 +485,25 @@ const NewValuation: React.FC = () => {
                 if (user) finalWorkshopId = user.id;
             }
 
-            const bitrixResult = await pushValuationToBitrix(finalData, fileLinks, selectedCost, finalWorkshopId || undefined);
+            // Detect Expert Type (User vs Contact)
+            let expertIsContact = false;
+            let finalExpertId = formData.assignedExpertId;
+
+            if (formData.assignedExpertId?.startsWith('contact_')) {
+                expertIsContact = true;
+                finalExpertId = formData.assignedExpertId.replace('contact_', '');
+            } else {
+                // Fallback check just in case (legacy data)
+                const selectedExpert = bitrixUsers.find(u => u.ID === formData.assignedExpertId);
+                expertIsContact = selectedExpert?.IS_CONTACT || false;
+            }
+
+            console.log(`[Submit] Expert Type Check: RawID=${formData.assignedExpertId}, FinalID=${finalExpertId}, IsContact=${expertIsContact}`);
+
+            // Create a temp copy of data with the clean ID
+            const dataForBitrix = { ...finalData, assignedExpertId: finalExpertId };
+
+            const bitrixResult = await pushValuationToBitrix(dataForBitrix, fileLinks, selectedCost, finalWorkshopId || undefined, expertIsContact);
 
             if (!bitrixResult.success) {
                 console.warn("Bitrix push failed, but local data saved:", bitrixResult.error);
@@ -545,7 +582,6 @@ const NewValuation: React.FC = () => {
                                     Vinculado a OT: {formData.workOrderId}
                                 </span>
                             )}
-                            <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-mono">{formData.ticketNumber}</span>
                         </div>
                         <h1 className="text-2xl font-bold text-slate-900">Nueva Solicitud de Peritación</h1>
                         <p className="text-slate-500">Complete el formulario para solicitar una valoración independiente.</p>
@@ -588,8 +624,8 @@ const NewValuation: React.FC = () => {
                                 >
                                     <option value="">-- Seleccione una Orden de Trabajo --</option>
                                     {availableWorkOrders.map(wo => (
-                                        <option key={wo.id} value={wo.id}>
-                                            {wo.id} - {wo.vehicle} ({wo.plate}) - {wo.insuredName}
+                                        <option key={wo.id} value={wo.expedienteId || wo.id}>
+                                            {wo.expedienteId || wo.id} - {wo.vehicle} ({wo.plate}) - {wo.insuredName}
                                         </option>
                                     ))}
                                 </select>

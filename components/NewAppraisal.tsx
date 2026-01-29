@@ -256,8 +256,8 @@ const NewAppraisal: React.FC = () => {
             // 2. Guardar Orden de Trabajo
             console.log("[SUBMIT] Saving work order...");
             const newOrder: WorkOrder = {
-                id: tempTicketId, // Use OT-YYYY-XXXX format instead of UUID
-                expedienteId: tempTicketId,
+                id: window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2), // UUID for DB Primary Key
+                expedienteId: tempTicketId, // OT-YYYY-XXXX for Human Readable Reference
                 clientId: selectedClient.id,
                 vehicleId: vehicleId,
                 status: 'reception',

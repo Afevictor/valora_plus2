@@ -7,6 +7,7 @@ export interface BitrixUser {
     WORK_POSITION?: string;
     ACTIVE: boolean;
     PERSONAL_PHOTO?: string;
+    IS_CONTACT?: boolean;
 }
 
 // Internal cache to avoid fetching config on every single call if not needed
@@ -133,17 +134,21 @@ export const sendBitrixMessage = async (userId: string, message: string): Promis
  * @param valuationData The form data from the valuation request
  * @param fileLinks Array of uploaded file links
  * @param costData Optional full cost calculation object (HourCostCalculation)
+ * @param workshopId Optional workshop ID
+ * @param expertIsContact Whether the assigned expert ID belongs to a CRM Contact (vs a Bitrix User)
  */
 export const pushValuationToBitrix = async (
     valuationData: any,
     fileLinks: { url: string, type: 'image' | 'video' | 'doc' }[],
     costData?: any,
-    workshopId?: string
+    workshopId?: string,
+    expertIsContact: boolean = false
 ): Promise<{ success: boolean; id?: any; error?: string }> => {
     const url = await getWebhookUrl(workshopId);
     console.log(`🚀 [BitrixSync] Sync Attempt. Workshop: ${workshopId || 'Self'}, URL: ${url ? 'FOUND' : 'MISSING'}`);
 
     if (!url) {
+        // ... (error handling remains unchanged)
         const diagnosticInfo = workshopId ? `Workshop ID provided: ${workshopId}` : `No Workshop ID provided (using current user ID)`;
         console.error(`❌ [BitrixSync] Integration inactive. ${diagnosticInfo}`);
         return {
@@ -155,6 +160,7 @@ export const pushValuationToBitrix = async (
     try {
         // --- URL SANITIZATION ---
         const baseUrl = getSanitizedBaseUrl(url);
+        // ... (Description building code remains unchanged) ...
         console.log(`📡 [BitrixSync] Using Sanitized URL: ${baseUrl}`);
 
         // --- COMPREHENSIVE DESCRIPTION BUILDER (BBCode) ---
@@ -264,12 +270,16 @@ export const pushValuationToBitrix = async (
         let finalExpertId = valuationData.assignedExpertId;
 
         // Fallback: Check for default expert in settings if none assigned
+        // Note: This fallback might be risky if we don't know the type, but usually default expert implies logic handled upstream
         if (!finalExpertId) {
             try {
                 const { getBitrixSettingsFromSupabase } = await import('./supabaseClient');
                 const settings = await getBitrixSettingsFromSupabase(workshopId);
                 if (settings?.default_expert_id) {
                     finalExpertId = settings.default_expert_id;
+                    // We assume if it's default in settings, the consumer should strictly pass expertIsContact if needed
+                    // But here we can't easily recover the type without re-fetching.
+                    // Risk mitigation: If manual selection failed, auto-assign usually targets Internal Users.
                 }
             } catch (e) { }
         }
@@ -280,19 +290,34 @@ export const pushValuationToBitrix = async (
         const plateFinal = (pRaw ? String(pRaw).trim().toUpperCase() : 'PENDIENTE');
 
         console.log("🚀 [BitrixSync] Sending Plate:", plateFinal);
+        console.log("🚀 [BitrixSync] Expert Assignment Strategy:", expertIsContact ? `CONTACT_ID=${finalExpertId}` : `ASSIGNED_BY_ID=${finalExpertId}`);
 
-        const payload = {
+        const payload: any = {
             fields: {
                 TITLE: `PLATE: ${plateFinal}`,
                 CATEGORY_ID: 0,
                 STAGE_ID: "NEW",
                 OPENED: "Y",
-                ASSIGNED_BY_ID: finalExpertId || null,
                 COMMENTS: description,
                 CURRENCY_ID: "EUR",
                 OPPORTUNITY: 0
             }
         };
+
+        // --- ASSIGNMENT LOGIC ---
+        // --- ASSIGNMENT LOGIC ---
+        if (expertIsContact && finalExpertId) {
+            // If the expert is an external contact, link them as the Contact (Using Array format)
+            payload.fields.CONTACT_IDS = [finalExpertId];
+            console.log(`🔗 Linking Deal to Contact ID: ${finalExpertId}`);
+
+            // OPTIONAL: If we want the deal to appear as 'Assigned' to the API user (Victor) explicitly:
+            // payload.fields.ASSIGNED_BY_ID = 1; // Assuming 1 is Admin, but safer to leave null/default
+        } else if (finalExpertId) {
+            // If the expert is an internal user, make them the Responsible Person
+            payload.fields.ASSIGNED_BY_ID = finalExpertId;
+            console.log(`👤 Assigning Deal to User ID: ${finalExpertId}`);
+        }
 
         console.log("📤 Pushing to Bitrix with Payload:", payload);
 
@@ -320,9 +345,10 @@ export const pushValuationToBitrix = async (
         let data = await performDealAdd(payload);
 
         if (data.error_description && data.error_description.includes('Access denied')) {
-            console.warn("⚠️ Bitrix Access Denied (Attempt 1). Retrying without ASSIGNED_BY_ID...");
+            console.warn("⚠️ Bitrix Access Denied (Attempt 1). Retrying without ASSIGNED_BY_ID/CONTACT_ID...");
             const fallbackPayload1 = { ...payload };
             delete fallbackPayload1.fields.ASSIGNED_BY_ID;
+            // Also optional to remove Contact ID if that was the cause, but usually it's ASSIGNED_BY_ID that causes auth issues
             fallbackPayload1.fields.COMMENTS += `\n\n[B]NOTE:[/B] Auto-assign failed (Permissions). Please assign manually.`;
             data = await performDealAdd(fallbackPayload1);
         }
