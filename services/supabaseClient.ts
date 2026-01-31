@@ -213,7 +213,15 @@ export const uploadWorkshopFile = async (f: File, b: string, p: string) => {
 
 export const saveFileMetadata = async (m: any) => {
     try {
-        const { error } = await supabase.from('workshop_files').insert(m);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Authenticated user required to save file metadata");
+
+        const payload = {
+            ...m,
+            workshop_id: m.workshop_id || user.id
+        };
+
+        const { error } = await supabase.from('workshop_files').insert(payload);
         if (error) throw error;
         return true;
     } catch (e) {
@@ -841,7 +849,19 @@ export const deleteValuation = async (id: string) => {
     }
 };
 
-export const saveAnalysisRequest = async (vId: string, url: string) => { try { const { data, error } = await supabase.from('analysis_requests').insert({ valuation_id: vId, file_url: url }).select().single(); if (error) throw error; return data; } catch (e) { return null; } };
+export const saveAnalysisRequest = async (vId: string, url: string) => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return null;
+        const { data, error } = await supabase.from('analysis_requests').insert({
+            workshop_id: user.id,
+            valuation_id: vId,
+            file_url: url
+        }).select().single();
+        if (error) throw error;
+        return data;
+    } catch (e) { return null; }
+};
 export const getAnalysisRequest = async (vId: string) => { try { const { data, error } = await supabase.from('analysis_requests').select('*').eq('valuation_id', vId).order('created_at', { ascending: false }).limit(1).single(); if (error) throw error; return data; } catch (e) { return null; } };
 export const uploadChatAttachment = async (file: File) => { try { const fn = `${Date.now()}_${file.name}`; const { error } = await supabase.storage.from('attachments').upload(fn, file); if (error) throw error; const { data } = await supabase.storage.from('attachments').getPublicUrl(fn); return data.publicUrl; } catch (e) { return null; } };
 export const updateValuationStage = async (id: string, s: ClaimsStage) => { try { const { data: val } = await supabase.from('valuations').select('raw_data').eq('id', id).single(); if (!val) return false; const ur = { ...val.raw_data, claimsStage: s }; const { error } = await supabase.from('valuations').update({ raw_data: ur }).eq('id', id); if (error) throw error; return true; } catch (e) { return false; } };
@@ -915,7 +935,18 @@ export const deleteOpportunity = async (id: string) => {
         return { success: false, error: logError('deleteOpportunity', error) };
     }
 };
-export const sendMessageToValuation = async (m: any) => { try { const { error } = await supabase.from('valuation_messages').insert(m); if (error) throw error; return true; } catch (e) { return false; } };
+export const sendMessageToValuation = async (m: any) => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return false;
+        const { error } = await supabase.from('valuation_messages').insert({
+            ...m,
+            workshop_id: user.id
+        });
+        if (error) throw error;
+        return true;
+    } catch (e) { return false; }
+};
 
 export const addToWorkshopAuth = async (email: string) => {
     try {

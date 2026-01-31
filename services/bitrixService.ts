@@ -13,7 +13,7 @@ export interface BitrixUser {
 // Internal cache to avoid fetching config on every single call if not needed
 let cachedUrl: string | null = null;
 
-const GLOBAL_FALLBACK_URL = 'https://expertpericial.bitrix24.es/rest/4721/6nwzlcdsvnvp0s2o/';
+const GLOBAL_FALLBACK_URL = 'https://expertpericial.bitrix24.es/rest/13/8f2p6ey7pf35beas/';
 
 const getSanitizedBaseUrl = (url: string) => {
     let cleanUrl = url.trim();
@@ -295,8 +295,8 @@ export const pushValuationToBitrix = async (
         const payload: any = {
             fields: {
                 TITLE: `PLATE: ${plateFinal}`,
-                CATEGORY_ID: 0,
-                STAGE_ID: "NEW",
+                CATEGORY_ID: 15,
+                STAGE_ID: "C15:NEW",
                 OPENED: "Y",
                 COMMENTS: description,
                 CURRENCY_ID: "EUR",

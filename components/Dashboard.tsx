@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { RepairJob, AppRole, Client } from '../types';
-import { getWorkOrdersFromSupabase, getCompanyProfileFromSupabase, getClientsFromSupabase, getValuationsFromSupabase, supabase } from '../services/supabaseClient';
+import { getWorkOrdersFromSupabase, getCompanyProfileFromSupabase, getClientsFromSupabase, getValuationsFromSupabase, getQuotes, getOpportunities, supabase } from '../services/supabaseClient';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -19,7 +19,9 @@ const Dashboard: React.FC = () => {
     // Client specific stats
     reception: 0,
     inProgress: 0,
-    finished: 0
+    finished: 0,
+    pendingQuotes: 0,
+    pendingOpps: 0
   });
 
   useEffect(() => {
@@ -30,11 +32,13 @@ const Dashboard: React.FC = () => {
 
       const { data: { user } } = await supabase.auth.getUser();
 
-      const [orderData, profile, allClients, valuationData] = await Promise.all([
+      const [orderData, profile, allClients, valuationData, quoteData, opportunityData] = await Promise.all([
         getWorkOrdersFromSupabase(),
         getCompanyProfileFromSupabase(),
         getClientsFromSupabase(),
-        getValuationsFromSupabase()
+        getValuationsFromSupabase(),
+        getQuotes(),
+        getOpportunities()
       ]);
 
       // Current Month Analysis Fetch
@@ -51,22 +55,21 @@ const Dashboard: React.FC = () => {
       let filteredValuations = valuationData;
 
       if (role === 'Client' && user) {
-        const clientProfile = allClients.find(c => c.id === user.id);
+        const clientProfile = allClients.find((c: Client) => c.id === user.id);
         if (clientProfile) setDisplayName(clientProfile.name);
-        filteredOrders = orderData.filter(o => o.clientId === user.id);
-        // filteredValuations remains valuationData from line 33 which is already for the workshop context
+        filteredOrders = orderData.filter((o: RepairJob) => o.clientId === user.id);
       } else {
         const raw = profile?.companyName || 'Valora Plus';
         const isBad = raw.toLowerCase().includes('mecanico') || raw.toLowerCase().includes('mecánico') || raw.includes('45');
         setDisplayName(isBad ? 'Valora Plus' : raw);
       }
 
-      const sorted = filteredOrders.sort((a, b) => new Date(b.entryDate).getTime() - new Date(a.entryDate).getTime());
+      const sorted = filteredOrders.sort((a: RepairJob, b: RepairJob) => new Date(b.entryDate).getTime() - new Date(a.entryDate).getTime());
       setJobs(sorted);
 
       // Calculate Client Stats
-      const reception = sorted.filter(j => j.status === 'reception').length;
-      const finished = sorted.filter(j => ['finished', 'closed', 'invoiced', 'admin_close'].includes(j.status.toLowerCase())).length;
+      const reception = sorted.filter((j: RepairJob) => j.status === 'reception').length;
+      const finished = sorted.filter((j: RepairJob) => ['finished', 'closed', 'invoiced', 'admin_close'].includes(j.status.toLowerCase())).length;
       const inProgress = sorted.length - reception - finished;
 
       setStats({
@@ -76,7 +79,9 @@ const Dashboard: React.FC = () => {
         appraisals: filteredValuations.length,
         reception,
         inProgress,
-        finished
+        finished,
+        pendingQuotes: quoteData.filter((q: any) => q.status === 'Sent' || q.status === 'Draft').length,
+        pendingOpps: opportunityData.filter((o: any) => o.status === 'Pending').length
       });
 
       setIsLoading(false);
@@ -135,9 +140,11 @@ const Dashboard: React.FC = () => {
             {[
               { label: 'Solicitadas', value: stats.reception, color: 'text-blue-600' },
               { label: 'En Taller', value: stats.inProgress, color: 'text-orange-600' },
-              { label: 'Entregas', value: stats.finished, color: 'text-emerald-600' }
+              { label: 'Entregas', value: stats.finished, color: 'text-emerald-600' },
+              { label: 'Ptos. Pendientes', value: stats.pendingQuotes, color: 'text-brand-600' },
+              { label: 'Oportunidades', value: stats.pendingOpps, color: 'text-purple-600' }
             ].map((stat, idx) => (
-              <div key={idx} className="bg-white px-4 py-3 rounded-xl border border-slate-200 shadow-sm text-center min-w-[100px] flex-1">
+              <div key={idx} className="bg-white px-4 py-3 rounded-xl border border-slate-200 shadow-sm text-center min-w-[120px] flex-1">
                 <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest mb-1">{stat.label}</p>
                 <p className={`text-xl font-black ${stat.color}`}>{stat.value}</p>
               </div>
