@@ -819,6 +819,27 @@ export const saveValuationToSupabase = async (val: ValuationRequest, overrideWor
     }
 };
 
+export const saveAnonymizedValuation = async (data: any) => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return false;
+
+        const { error } = await supabase.from('anonymized_valuations').insert({
+            ...data,
+            workshop_id: data.workshop_id || user.id
+        });
+
+        if (error) {
+            console.error("❌ [saveAnonymizedValuation] Error:", error);
+            throw error;
+        }
+        return true;
+    } catch (error) {
+        logError('saveAnonymizedValuation', error);
+        return false;
+    }
+};
+
 export const deleteValuation = async (id: string) => {
     try {
         console.log("🗑️ [DELETE] Attempting to delete valuation:", id);

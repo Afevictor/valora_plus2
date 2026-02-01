@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ValuationRequest, WorkOrder, Client, HourCostCalculation, RepairJob } from '../types';
-import { saveValuationToSupabase, getClientsFromSupabase, getCostCalculations, uploadChatAttachment, saveClientToSupabase, getCompanyProfileFromSupabase, getCompanyProfileById, logClientActivity, supabase, updateValuationStage, getWorkOrdersFromSupabase } from '../services/supabaseClient';
+import { saveValuationToSupabase, getClientsFromSupabase, getCostCalculations, uploadChatAttachment, saveClientToSupabase, getCompanyProfileFromSupabase, getCompanyProfileById, logClientActivity, supabase, updateValuationStage, getWorkOrdersFromSupabase, saveAnonymizedValuation } from '../services/supabaseClient';
 import { getBitrixUsers, BitrixUser, pushValuationToBitrix, getBitrixContacts } from '../services/bitrixService';
 import ClientForm from './ClientForm';
 
@@ -537,6 +537,27 @@ const NewValuation: React.FC = () => {
                     valuation: finalData,
                     ticketNumber: formData.ticketNumber
                 }
+            });
+
+            // --- STEP 6: SAVE ANONYMIZED VALUATION ---
+            console.log("[VALUATION SUBMIT] Saving anonymized valuation...");
+            const nameParts = (formData.insuredName || '').trim().split(' ');
+            const firstName = nameParts[0] || '';
+            const lastName = nameParts.slice(1).join(' ') || '';
+
+            const anonymizedPhotos = fileLinks
+                .filter(fl => fl.type === 'image')
+                .map(fl => fl.url);
+
+            await saveAnonymizedValuation({
+                valuation_id: finalData.id,
+                order_number: formData.vehicle?.plate || '',
+                registration_number: formData.vehicle?.plate || '',
+                first_name: firstName,
+                last_name: lastName,
+                photos: anonymizedPhotos,
+                mileage: formData.vehicle?.km || 0,
+                labour_cost: selectedCost?.resultado_calculo?.hourlyCost || 0
             });
 
             setStep(5); // Success Screen
