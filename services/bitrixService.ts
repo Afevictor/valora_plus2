@@ -305,19 +305,14 @@ export const pushValuationToBitrix = async (
         };
 
         // --- ASSIGNMENT LOGIC ---
-        // --- ASSIGNMENT LOGIC ---
         if (expertIsContact && finalExpertId) {
             // If the expert is an external contact, link them as the Contact (Using Array format)
             payload.fields.CONTACT_IDS = [finalExpertId];
             console.log(`🔗 Linking Deal to Contact ID: ${finalExpertId}`);
-
-            // OPTIONAL: If we want the deal to appear as 'Assigned' to the API user (Victor) explicitly:
-            // payload.fields.ASSIGNED_BY_ID = 1; // Assuming 1 is Admin, but safer to leave null/default
-        } else if (finalExpertId) {
-            // If the expert is an internal user, make them the Responsible Person
-            payload.fields.ASSIGNED_BY_ID = finalExpertId;
-            console.log(`👤 Assigning Deal to User ID: ${finalExpertId}`);
         }
+        // DISCONNECTED: We no longer assign to internal Bitrix Users (ASSIGNED_BY_ID) automatically
+        // as per user request to stop auto-assignment to system users.
+
 
         console.log("📤 Pushing to Bitrix with Payload:", payload);
 

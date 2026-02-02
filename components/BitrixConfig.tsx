@@ -28,22 +28,20 @@ const BitrixConfig: React.FC = () => {
     const loadExperts = async () => {
         setIsLoadingExperts(true);
         try {
-            const [users, contacts] = await Promise.all([
-                getBitrixUsers(),
-                getBitrixContacts()
-            ]);
+            // ONLY fetch CRM Contacts as per user request
+            const contacts = await getBitrixContacts();
 
-            // Transform contacts to match BitrixUser interface roughly for the dropdown
+            // Transform contacts to match BitrixUser interface
             const mappedContacts = contacts.map((c: any) => ({
-                ID: c.ID,
+                ID: `contact_${c.ID}`, // Use prefixed ID for consistency
                 NAME: c.NAME,
                 LAST_NAME: c.LAST_NAME,
                 WORK_POSITION: c.WORK_POSITION || 'Contacto Externo',
-                ACTIVE: true
+                ACTIVE: true,
+                IS_CONTACT: true
             }));
 
-            // Merge and deduplicate
-            setAvailableExperts([...users, ...mappedContacts]);
+            setAvailableExperts(mappedContacts);
         } catch (e) {
             console.error(e);
         } finally {
@@ -109,7 +107,7 @@ const BitrixConfig: React.FC = () => {
                                 >
                                     <option value="">-- Sin asignar (Manual) --</option>
                                     {availableExperts.map(u => (
-                                        <option key={u.ID} value={u.ID}>{u.NAME} {u.LAST_NAME} ({u.WORK_POSITION || 'Bitrix User'})</option>
+                                        <option key={u.ID} value={u.ID}>{u.NAME} {u.LAST_NAME} ({u.WORK_POSITION || 'Bitrix Contact'})</option>
                                     ))}
                                 </select>
                                 <button

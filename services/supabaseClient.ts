@@ -792,6 +792,24 @@ export const getValuationsFromSupabase = async (): Promise<ValuationRequest[]> =
         return [];
     }
 };
+
+export const getValuationById = async (id: string): Promise<ValuationRequest | null> => {
+    try {
+        const { data, error } = await supabase.from('valuations').select('*').eq('id', id).single();
+        if (error) throw error;
+        if (!data) return null;
+
+        const raw = (data.raw_data || {}) as ValuationRequest;
+        return {
+            ...raw,
+            id: data.id,
+            workshop_id: data.workshop_id,
+        };
+    } catch (e) {
+        logError('getValuationById', e);
+        return null;
+    }
+};
 export const saveValuationToSupabase = async (val: ValuationRequest, overrideWorkshopId?: string) => {
     try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -962,11 +980,60 @@ export const sendMessageToValuation = async (m: any) => {
         if (!user) return false;
         const { error } = await supabase.from('valuation_messages').insert({
             ...m,
-            workshop_id: user.id
+            workshop_id: user.id,
+            sender_id: user.id
         });
         if (error) throw error;
         return true;
     } catch (e) { return false; }
+};
+
+export const getValuationMessages = async (valuationId: string) => {
+    try {
+        const { data, error } = await supabase
+            .from('valuation_messages')
+            .select('*')
+            .eq('valuation_id', valuationId)
+            .order('created_at', { ascending: true });
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        logError('getValuationMessages', e);
+        return [];
+    }
+};
+
+export const getInternalMessages = async (workOrderId: string) => {
+    try {
+        const { data, error } = await supabase
+            .from('internal_messages')
+            .select('*')
+            .eq('work_order_id', workOrderId)
+            .order('created_at', { ascending: true });
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        logError('getInternalMessages', e);
+        return [];
+    }
+};
+
+export const sendInternalMessage = async (msg: any) => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return false;
+
+        const { error } = await supabase.from('internal_messages').insert({
+            ...msg,
+            workshop_id: user.id,
+            sender_id: user.id
+        });
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        logError('sendInternalMessage', e);
+        return false;
+    }
 };
 
 export const addToWorkshopAuth = async (email: string) => {

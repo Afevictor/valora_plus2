@@ -14,6 +14,7 @@ import {
     updateWorkOrderStatus,
     supabase
 } from '../services/supabaseClient';
+import DualChat from './DualChat';
 
 const REPAIR_PHASES = [
     { value: 'disassembly', label: 'Desmontaje' },
@@ -911,6 +912,12 @@ const ExpedienteDetail: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {activeTab === 'chat' && job && (
+                    <div className="flex-1 overflow-hidden animate-fade-in min-h-[600px]">
+                        <DualChat workOrder={job} />
                     </div>
                 )}
             </div>

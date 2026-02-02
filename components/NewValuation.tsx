@@ -181,15 +181,12 @@ const NewValuation: React.FC = () => {
     const handleRefreshBitrixUsers = async (wId?: string) => {
         setRefreshingUsers(true);
         try {
-            // Fetch both Users and CRM Contacts (like in BitrixConfig)
-            const [bUsers, bContacts] = await Promise.all([
-                getBitrixUsers(true, wId),
-                getBitrixContacts() // This service function handles its own URL resolution usually
-            ]);
+            // ONLY fetch CRM Contacts as per user request (Stop using internal Bitrix Users)
+            const bContacts = await getBitrixContacts();
 
-            // Map Contacts to BitrixUser format with prefixed ID to avoid collisions
+            // Map Contacts to BitrixUser format with prefixed ID
             const mappedContacts = bContacts.map((c: any) => ({
-                ID: `contact_${c.ID}`, // Prefix to distinguish and avoid ID collision
+                ID: `contact_${c.ID}`,
                 NAME: c.NAME,
                 LAST_NAME: c.LAST_NAME,
                 WORK_POSITION: c.WORK_POSITION || 'Contacto Externo',
@@ -197,7 +194,7 @@ const NewValuation: React.FC = () => {
                 IS_CONTACT: true
             } as BitrixUser));
 
-            const allExperts = [...bUsers, ...mappedContacts];
+            const allExperts = mappedContacts;
 
             if (allExperts.length > 0) {
                 setBitrixUsers(allExperts);
@@ -1052,7 +1049,7 @@ const NewValuation: React.FC = () => {
                                             <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
                                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                                             </div>
-                                            Asignar Perito (Colega de Bitrix24) <span className="text-red-500">*</span>
+                                            Asignar Perito (Contacto de Bitrix24) <span className="text-red-500">*</span>
                                         </h4>
 
                                         <button
@@ -1112,7 +1109,7 @@ const NewValuation: React.FC = () => {
                                                         value={formData.assignedExpertId}
                                                         onChange={(e) => handleInputChange('root', 'assignedExpertId', e.target.value)}
                                                     >
-                                                        <option value="">-- Seleccionar un Colega de Bitrix24 --</option>
+                                                        <option value="">-- Seleccionar un Contacto de Bitrix24 --</option>
                                                         {bitrixUsers.map(user => (
                                                             <option key={user.ID} value={user.ID}>
                                                                 {user.NAME} {user.LAST_NAME} {user.WORK_POSITION ? `(${user.WORK_POSITION})` : ''}
