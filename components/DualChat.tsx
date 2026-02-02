@@ -9,7 +9,7 @@ import {
     uploadChatAttachment,
     getValuationById
 } from '../services/supabaseClient';
-import { getBitrixMessages, sendBitrixMessage } from '../services/bitrixService';
+import { getBitrixMessages, sendBitrixMessage, getBitrixContacts } from '../services/bitrixService';
 import { RepairJob } from '../types';
 
 interface DualChatProps {
@@ -29,6 +29,8 @@ const DualChat: React.FC<DualChatProps> = ({ workOrder, onClose }) => {
     const [isAttaching, setIsAttaching] = useState(false);
     const [expertId, setExpertId] = useState<string | null>(null);
     const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+    const [availableExperts, setAvailableExperts] = useState<any[]>([]);
+    const [isLoadingExperts, setIsLoadingExperts] = useState(false);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -107,11 +109,67 @@ const DualChat: React.FC<DualChatProps> = ({ workOrder, onClose }) => {
             const eMsgs = await getValuationMessages(workOrder.valuationId);
             setExpertMessages(eMsgs);
 
+
             // Fetch Valuation to get Expert ID
             const val = await getValuationById(workOrder.valuationId);
             if (val && val.assignedExpertId) {
                 setExpertId(val.assignedExpertId);
+            } else {
+                // If missing, load available contacts for manual selection
+                loadAvailableExperts();
             }
+        }
+    };
+
+    const loadAvailableExperts = async () => {
+        setIsLoadingExperts(true);
+        try {
+            const contacts = await getBitrixContacts();
+            const mapped = contacts.map((c: any) => ({
+                id: `contact_${c.ID}`,
+                name: `${c.NAME} ${c.LAST_NAME}`.trim(),
+                role: c.WORK_POSITION || 'Contacto Externo'
+            }));
+            setAvailableExperts(mapped);
+        } catch (e) {
+            console.error("Failed to load experts:", e);
+        } finally {
+            setIsLoadingExperts(false);
+        }
+    };
+
+    const handleSelectExpert = async (selectedId: string) => {
+        if (!selectedId) return;
+
+        // 1. Update State
+        setExpertId(selectedId);
+
+        // 2. Update Database (Persistent Link)
+        try {
+            const val = await getValuationById(workOrder.valuationId!);
+            if (val) {
+                const updatedVal = {
+                    ...val,
+                    assignedExpertId: selectedId
+                };
+                // Upsert back to Supabase
+                // Note: We use existing saveValuationToSupabase which handles the raw_data JSONB update
+                await sendMessageToValuation({
+                    valuation_id: workOrder.valuationId,
+                    message: `[SISTEMA] Se ha vinculado manualmente al contacto: ${selectedId}`,
+                    sender_name: 'Sistema',
+                    sender_role: 'System',
+                    sender_id: 'system'
+                });
+
+                // We need to fetch the workshopId to save correctly if we are not the owner (e.g. admin staff)
+                // But saveValuationToSupabase defaults to current user if not provided.
+                // ideally we pass val.workshop_id if available.
+                const { saveValuationToSupabase } = await import('../services/supabaseClient');
+                await saveValuationToSupabase(updatedVal, val.workshop_id);
+            }
+        } catch (e) {
+            console.error("Failed to link expert:", e);
         }
     };
 
@@ -239,8 +297,8 @@ const DualChat: React.FC<DualChatProps> = ({ workOrder, onClose }) => {
                 </div>
 
                 <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${isMe
-                        ? 'bg-brand-600 text-white rounded-tr-none'
-                        : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none'
+                    ? 'bg-brand-600 text-white rounded-tr-none'
+                    : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none'
                     }`}>
                     {msg.message && <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.message}</p>}
 
@@ -277,8 +335,8 @@ const DualChat: React.FC<DualChatProps> = ({ workOrder, onClose }) => {
                     <button
                         onClick={() => setActiveTab('internal')}
                         className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase tracking-tighter transition-all ${activeTab === 'internal'
-                                ? 'bg-white text-slate-900 shadow-md ring-1 ring-slate-200'
-                                : 'text-slate-400 hover:text-slate-600'
+                            ? 'bg-white text-slate-900 shadow-md ring-1 ring-slate-200'
+                            : 'text-slate-400 hover:text-slate-600'
                             }`}
                     >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>
@@ -294,8 +352,8 @@ const DualChat: React.FC<DualChatProps> = ({ workOrder, onClose }) => {
                         <button
                             onClick={() => setActiveTab('expert')}
                             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase tracking-tighter transition-all ${activeTab === 'expert'
-                                    ? 'bg-slate-900 text-white shadow-md'
-                                    : 'text-slate-400 hover:text-slate-600'
+                                ? 'bg-slate-900 text-white shadow-md'
+                                : 'text-slate-400 hover:text-slate-600'
                                 }`}
                         >
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
@@ -348,7 +406,27 @@ const DualChat: React.FC<DualChatProps> = ({ workOrder, onClose }) => {
                             <svg className="w-16 h-16 text-slate-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                             <p className="text-sm font-bold uppercase tracking-widest">Canal con peritacion activa</p>
                             <p className="text-[10px] tracking-tight mt-1">Sincronizado con Bitrix24</p>
-                            {!expertId && <p className="text-xs text-red-400 mt-2">No se detectó ID de Perito</p>}
+                            {!expertId && (
+                                <div className="mt-4 w-full max-w-xs bg-red-50 p-4 rounded-2xl border border-red-100">
+                                    <p className="text-xs text-red-500 font-bold mb-2">⚠️ No se detectó Perito Asignado</p>
+                                    <p className="text-[10px] text-red-400 mb-3">Selecciona un contacto de Bitrix para iniciar el chat:</p>
+
+                                    {isLoadingExperts ? (
+                                        <div className="animate-spin h-5 w-5 border-2 border-red-400 border-t-transparent rounded-full mx-auto"></div>
+                                    ) : (
+                                        <select
+                                            className="w-full text-xs p-2 rounded-lg border border-red-200 text-slate-700 font-bold outline-none"
+                                            onChange={(e) => handleSelectExpert(e.target.value)}
+                                            defaultValue=""
+                                        >
+                                            <option value="" disabled>-- Seleccionar Contacto --</option>
+                                            {availableExperts.map(ex => (
+                                                <option key={ex.id} value={ex.id}>{ex.name} ({ex.role})</option>
+                                            ))}
+                                        </select>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )
                 )}
