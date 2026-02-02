@@ -230,6 +230,7 @@ export interface Opportunity {
 
 export interface ValuationRequest {
   id: string;
+  workshop_id?: string;
   ticketNumber: string;
   workOrderId: string;
   assignedExpertId: string;
