@@ -1,18 +1,11 @@
-
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { ValuationRequest, ValuationChatMsg, Employee } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ValuationChatMsg } from '../types';
 import { notificationService } from '../services/notificationService';
 import {
-    getValuationsFromSupabase,
-    getEmployeesFromSupabase,
-    getCompanyProfileFromSupabase,
     uploadChatAttachment,
-    deleteValuation,
-    saveAnalysisRequest,
     supabase
 } from '../services/supabaseClient';
-import { emailService } from '../services/emailService';
 import { getBitrixUsers, BitrixUser, sendBitrixMessage, getBitrixMessages } from '../services/bitrixService';
 
 // Ayudante para convertir archivo a Base64 para respaldo
@@ -46,18 +39,12 @@ const formatMessageTime = (dateStr?: string | Date, fallback?: string) => {
 
 const Valuations: React.FC = () => {
     const navigate = useNavigate();
-    const location = useLocation();
-    const [valuations, setValuations] = useState<ValuationRequest[]>([]);
-    const [contacts, setContacts] = useState<Employee[]>([]);
     const [bitrixUsers, setBitrixUsers] = useState<BitrixUser[]>([]);
-    const [selectedValuation, setSelectedValuation] = useState<ValuationRequest | null>(null);
+    const [selectedUser, setSelectedUser] = useState<BitrixUser | null>(null);
     const [activeMessages, setActiveMessages] = useState<ValuationChatMsg[]>([]);
     const [chatInput, setChatInput] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isLoadingChat, setIsLoadingChat] = useState(false);
-
-    // Rastrear elementos analizados para alternar el estado del botón
-    const [analyzedItems, setAnalyzedItems] = useState<Set<string>>(new Set());
 
     // Estado de Adjuntos
     const [tempAttachments, setTempAttachments] = useState<{ file: File, preview: string, type: string }[]>([]);
@@ -68,68 +55,33 @@ const Valuations: React.FC = () => {
     const [isSending, setIsSending] = useState(false);
     const [pollingError, setPollingError] = useState(false);
 
-    // Nuevo Estado para Email de la Empresa
-    const [companyEmail, setCompanyEmail] = useState<string>('');
-
     const [searchQuery, setSearchQuery] = useState('');
 
     // Obtención Inicial de Datos
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
-
-            // Cargar Perfil de Empresa
-            const profile = await getCompanyProfileFromSupabase();
-            if (profile && profile.email) {
-                setCompanyEmail(profile.email);
-            }
-
-            // Cargar Empleados
-            const allEmployees = await getEmployeesFromSupabase();
-            const expertContacts = allEmployees.filter(e => e.role === 'Expert / Appraiser');
-            setContacts(expertContacts);
-
-            // Cargar Usuarios de Bitrix
+            // Cargar Usuarios de Bitrix (Contactos)
             const bUsers = await getBitrixUsers();
-            setBitrixUsers(bUsers);
 
-            // Cargar Peritaciones - SOLO DB ESTRICTO
-            const dbData = await getValuationsFromSupabase();
+            // Filtrar usuarios activos y ordenar alfabéticamente
+            const sortedUsers = bUsers
+                .filter(u => u.ACTIVE)
+                .sort((a, b) => a.NAME.localeCompare(b.NAME));
 
-            if (dbData && dbData.length > 0) {
-                const processed = dbData.map(v => ({
-                    ...v,
-                    claimsStage: v.claimsStage || 'draft'
-                }));
-                setValuations(processed);
-            } else {
-                setValuations([]);
-            }
-
+            setBitrixUsers(sortedUsers);
             setIsLoading(false);
         };
 
         fetchData();
     }, []);
 
-    // Efecto separado para Selección Automática desde el Estado de Navegación
-    useEffect(() => {
-        if (location.state?.selectedId && valuations.length > 0) {
-            const target = valuations.find(v => v.id === location.state.selectedId);
-            if (target) {
-                setSelectedValuation(target);
-            }
-        }
-    }, [valuations, location.state]);
-
-    const getValuationId = (v: ValuationRequest) => v.id;
-
-    // --- CARGA DE CHAT DE BITRIX (Directo desde API, No DB) ---
+    // --- CARGA DE CHAT DE BITRIX (Directo desde API) ---
     useEffect(() => {
         let interval: any;
 
         const fetchBitrixChat = async () => {
-            if (!selectedValuation || !selectedValuation.assignedExpertId) {
+            if (!selectedUser) {
                 setActiveMessages([]);
                 return;
             }
@@ -139,21 +91,21 @@ const Valuations: React.FC = () => {
 
             try {
                 // Obtener directamente de la API de Bitrix
-                const messages = await getBitrixMessages(selectedValuation.assignedExpertId);
+                const messages = await getBitrixMessages(selectedUser.ID);
                 setPollingError(false);
 
                 if (messages && Array.isArray(messages)) {
                     const mappedMessages: ValuationChatMsg[] = messages.map((bxMsg: any) => {
-                        // Determinar Remitente: Si el ID del autor coincide con el del Experto, es Experto. Si no, Taller.
-                        const isExpert = String(bxMsg.author_id) === String(selectedValuation.assignedExpertId);
+                        // Determinar Remitente si el mensaje es del usuario seleccionado
+                        const isFromContact = String(bxMsg.author_id) === String(selectedUser.ID);
 
                         return {
                             id: String(bxMsg.id),
-                            sender: isExpert ? 'Expert' : 'Workshop',
+                            sender: isFromContact ? 'Expert' : 'Workshop', // 'Expert' en este contexto es el contacto remoto
                             text: bxMsg.text || '',
                             timestamp: formatMessageTime(bxMsg.date),
                             rawDate: bxMsg.date,
-                            deliveryStatus: 'delivered', // Asumir entregado si lo devuelve la API
+                            deliveryStatus: 'delivered',
                             isEmail: false,
                             files: []
                         };
@@ -174,16 +126,16 @@ const Valuations: React.FC = () => {
             }
         };
 
-        if (selectedValuation) {
+        if (selectedUser) {
             fetchBitrixChat();
-            // Poll cada 5 segundos para nuevos mensajes de Bitrix
+            // Poll cada 5 segundos para nuevos mensajes
             interval = setInterval(fetchBitrixChat, 5000);
         }
 
         return () => {
             if (interval) clearInterval(interval);
         };
-    }, [selectedValuation]);
+    }, [selectedUser]);
 
     useEffect(() => {
         setTimeout(() => {
@@ -209,13 +161,7 @@ const Valuations: React.FC = () => {
     };
 
     const handleSendMessage = async () => {
-        if (!selectedValuation || (!chatInput.trim() && tempAttachments.length === 0) || isSending) return;
-
-        // Comprobar si el Experto de Bitrix está asignado
-        if (!selectedValuation.assignedExpertId) {
-            alert("No hay ningún Experto de Bitrix asignado a esta peritación. No se puede enviar el mensaje.");
-            return;
-        }
+        if (!selectedUser || (!chatInput.trim() && tempAttachments.length === 0) || isSending) return;
 
         setIsSending(true);
 
@@ -223,7 +169,7 @@ const Valuations: React.FC = () => {
             const fileLinks: string[] = [];
             let uploadFailed = false;
 
-            // 1. Subir Adjuntos a la Nube (Supabase Storage)
+            // 1. Subir Adjuntos
             if (tempAttachments.length > 0) {
                 try {
                     for (const att of tempAttachments) {
@@ -231,7 +177,6 @@ const Valuations: React.FC = () => {
                         if (publicUrl) {
                             fileLinks.push(publicUrl);
                         } else {
-                            console.warn("Fallo en la subida al bucket, recurriendo a Base64");
                             uploadFailed = true;
                             const b64 = await fileToBase64(att.file);
                             fileLinks.push(b64);
@@ -251,14 +196,13 @@ const Valuations: React.FC = () => {
             // 2. Preparar Mensaje para Bitrix
             let fullMsg = chatInput;
             if (fileLinks.length > 0) {
-                fullMsg += `\n\nAdjuntos:\n${fileLinks.map(link => link.startsWith('data:') ? '(Datos de Imagen)' : link).join('\n')}`;
+                fullMsg += `\n\nAdjuntos:\n${fileLinks.map((link, i) => link.startsWith('data:') ? `(Archivo ${i + 1})` : link).join('\n')}`;
             }
 
-            // 3. Enviar Directamente a Bitrix
-            const success = await sendBitrixMessage(selectedValuation.assignedExpertId, fullMsg);
+            // 3. Enviar Directamente a Bitrix usando el ID del usuario seleccionado
+            const success = await sendBitrixMessage(selectedUser.ID, fullMsg);
 
             if (success) {
-                // Actualización Optimista de UI
                 const now = new Date();
                 const optimisticMsg: ValuationChatMsg = {
                     id: `temp-${Date.now()}`,
@@ -284,54 +228,20 @@ const Valuations: React.FC = () => {
         }
     };
 
-    // --- ELIMINAR PERITACIÓN (DB) ---
-    const handleDeleteValuation = async () => {
-        if (!selectedValuation) return;
-        if (window.confirm("ADVERTENCIA: ¿Eliminar esta solicitud de peritación permanentemente?")) {
-            const targetId = getValuationId(selectedValuation);
-
-            deleteValuation(targetId).then(success => {
-                if (success) {
-                    setValuations(prev => prev.filter(v => v.id !== targetId));
-                    setSelectedValuation(null);
-                    notificationService.add({ type: 'success', title: 'Eliminado', message: 'Peritación eliminada.' });
-                } else {
-                    alert("Fallo al eliminar la peritación de la base de datos.");
-                }
-            });
-        }
-    };
-
-    const handleAnalyze = async (url: string) => {
-        if (!selectedValuation) return;
-        const valuationId = getValuationId(selectedValuation);
-        notificationService.add({ type: 'info', title: 'Enviando a Análisis', message: 'Solicitando análisis del documento...' });
-        const result = await saveAnalysisRequest(valuationId, url);
-        if (result) {
-            notificationService.add({ type: 'success', title: 'Análisis Solicitado', message: 'Documento en cola para procesamiento.' });
-            setAnalyzedItems(prev => new Set(prev).add(url));
-        } else {
-            notificationService.add({ type: 'alert', title: 'Error', message: 'No se pudo encolar el análisis. Compruebe la conexión a la base de datos.' });
-        }
-    };
-
     const renderMessageContent = (text: string, files: string[] | undefined, isIncoming: boolean) => {
         const safeText = text || "";
         const urlRegex = /(https?:\/\/[^\s]+)/g;
 
         const allLinksInText = safeText.match(urlRegex) || [];
         const explicitFiles = Array.isArray(files) ? files : [];
-
         const uniqueLinks = [...new Set([...explicitFiles, ...allLinksInText])];
 
         return (
             <div>
                 {safeText && <p className="whitespace-pre-wrap mb-1 text-sm">{safeText}</p>}
-
                 {uniqueLinks.length > 0 && (
                     <div className="flex flex-col gap-2 mt-2">
                         {uniqueLinks.map((link, idx) => {
-
                             if (!isIncoming) {
                                 return (
                                     <div key={`res-${idx}`} className="bg-white/50 border border-blue-200 rounded p-2 text-xs">
@@ -342,54 +252,13 @@ const Valuations: React.FC = () => {
                                     </div>
                                 );
                             }
-
-                            const isImage = link.match(/\.(jpeg|jpg|gif|png|webp)($|\?)/i) || link.startsWith('data:image');
-                            const isPdf = link.match(/\.pdf($|\?)/i);
-                            const isDocs = link.includes('docs.google.com') || link.includes('drive.google.com');
-
-                            let icon = 'DOC';
-                            let bg = 'bg-gray-100 text-gray-600';
-
-                            if (isImage) { icon = 'IMG'; bg = 'bg-blue-100 text-blue-600'; }
-                            else if (isPdf) { icon = 'PDF'; bg = 'bg-red-100 text-red-600'; }
-                            else if (isDocs) { icon = 'CLD'; bg = 'bg-green-100 text-green-600'; }
-
+                            // Renderizado simple para enlaces entrantes
                             return (
-                                <div key={`res-${idx}`} className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-xs ${bg}`}>
-                                            {icon}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-bold text-slate-700 truncate">Recurso Detectado</p>
-                                            <a href={link} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 truncate block hover:underline">
-                                                {link}
-                                            </a>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => window.open(link, '_blank')}
-                                            className="flex-1 bg-white border border-slate-300 text-slate-700 text-xs py-1.5 rounded hover:bg-slate-50 font-medium transition-colors"
-                                        >
-                                            Descargar / Abrir
-                                        </button>
-
-                                        {analyzedItems.has(link) ? (
-                                            <button disabled className="flex-1 bg-green-100 border border-green-200 text-green-700 text-xs py-1.5 rounded font-medium flex items-center justify-center gap-1 cursor-default">
-                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                                Enviado a Análisis
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={() => handleAnalyze(link)}
-                                                className="flex-1 bg-indigo-600 border border-indigo-600 text-white text-xs py-1.5 rounded hover:bg-indigo-700 font-medium transition-colors flex items-center justify-center gap-1"
-                                            >
-                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                                                Analizar
-                                            </button>
-                                        )}
-                                    </div>
+                                <div key={`res-${idx}`} className="bg-slate-50 border border-slate-200 rounded-lg p-2">
+                                    <a href={link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 truncate block hover:underline flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                                        Recurso Externo {idx + 1}
+                                    </a>
                                 </div>
                             );
                         })}
@@ -399,45 +268,25 @@ const Valuations: React.FC = () => {
         );
     };
 
-    const getChatName = (v: ValuationRequest) => {
-        const ticketId = v.ticketNumber || v.id;
-        if (v.assignedExpertId) {
-            const bitrixExpert = bitrixUsers.find(u => u.ID === v.assignedExpertId);
-            if (bitrixExpert) return `${bitrixExpert.NAME} ${bitrixExpert.LAST_NAME}`;
-            const expert = contacts.find(c => c.id === v.assignedExpertId);
-            if (expert) return expert.fullName;
-        }
-        return v.insuredName || `Ticket ${ticketId}`;
-    };
-
-    const getChatSubtext = (v: ValuationRequest) => {
-        if (v.assignedExpertId) {
-            const bitrixExpert = bitrixUsers.find(u => u.ID === v.assignedExpertId);
-            if (bitrixExpert) return bitrixExpert.WORK_POSITION || 'Perito';
-        }
-        return v.vehicle.plate;
-    };
-
     const getInitials = (name: string) => {
-        return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+        return name ? name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '??';
     };
 
-    const filteredValuations = valuations.filter(v =>
-        getChatName(v).toLowerCase().includes(searchQuery.toLowerCase()) ||
-        v.vehicle.plate.toLowerCase().includes(searchQuery.toLowerCase())
+    const filteredUsers = bitrixUsers.filter(u =>
+        `${u.NAME} ${u.LAST_NAME}`.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     return (
         <div className="flex h-[calc(100vh-4rem)] md:h-screen bg-white overflow-hidden font-sans">
 
-            {/* BARRA LATERAL */}
-            <div className={`w-full md:w-[360px] flex-col bg-white border-r border-slate-200 ${selectedValuation ? 'hidden md:flex' : 'flex'}`}>
-                {/* Cabecera */}
+            {/* BARRA LATERAL (LISTA DE CONTACTOS) */}
+            <div className={`w-full md:w-[360px] flex-col bg-white border-r border-slate-200 ${selectedUser ? 'hidden md:flex' : 'flex'}`}>
+                {/* Cabecera Sidebar */}
                 <div className="p-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="bg-[#2FC6F6] text-white p-1 rounded font-bold text-xs">b24</div>
-                        <span className="font-bold text-xl text-slate-800 tracking-tight">Chats</span>
-                        <span className="bg-[#E5F9ED] text-[#55D080] text-[10px] px-2 py-0.5 rounded-full font-bold tracking-wide">EN VIVO</span>
+                        <span className="font-bold text-xl text-slate-800 tracking-tight">Contactos</span>
+                        <span className="bg-[#E5F9ED] text-[#55D080] text-[10px] px-2 py-0.5 rounded-full font-bold tracking-wide">ONLINE</span>
                     </div>
                 </div>
 
@@ -449,7 +298,7 @@ const Valuations: React.FC = () => {
                         </div>
                         <input
                             type="text"
-                            placeholder="Buscar..."
+                            placeholder="Buscar contacto..."
                             className="w-full bg-[#F5F7F8] border-none rounded-lg px-4 pl-9 py-2 text-sm text-slate-700 outline-none focus:ring-1 focus:ring-slate-300"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -457,43 +306,44 @@ const Valuations: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Lista */}
+                {/* Lista de Usuarios */}
                 <div className="flex-1 overflow-y-auto">
-                    {filteredValuations.length === 0 && (
+                    {isLoading && (
+                        <div className="p-8 text-center text-slate-400 text-sm">Cargando contactos...</div>
+                    )}
+                    {!isLoading && filteredUsers.length === 0 && (
                         <div className="p-8 text-center text-slate-400 text-sm">
-                            No se encontraron chats activos.
+                            No se encontraron contactos.
                         </div>
                     )}
-                    {filteredValuations.map(v => {
-                        const isSelected = selectedValuation?.id === v.id;
-                        const name = getChatName(v);
-                        const subtext = getChatSubtext(v);
-                        const hasBitrix = bitrixUsers.some(u => u.ID === v.assignedExpertId);
+                    {filteredUsers.map(u => {
+                        const isSelected = selectedUser?.ID === u.ID;
+                        const fullName = `${u.NAME} ${u.LAST_NAME}`;
 
                         return (
                             <div
-                                key={v.id}
-                                onClick={() => setSelectedValuation(v)}
+                                key={u.ID}
+                                onClick={() => setSelectedUser(u)}
                                 className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors relative ${isSelected ? 'bg-[#EBF9FF]' : 'hover:bg-slate-50'}`}
                             >
                                 {isSelected && <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#2FC6F6]"></div>}
 
                                 <div className="relative flex-shrink-0">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm ${hasBitrix ? 'bg-blue-600' : 'bg-slate-400'}`}>
-                                        {getInitials(name)}
-                                    </div>
+                                    {u.PERSONAL_PHOTO ? (
+                                        <img src={u.PERSONAL_PHOTO} alt={u.NAME} className="w-10 h-10 rounded-full object-cover" />
+                                    ) : (
+                                        <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm">
+                                            {getInitials(u.NAME)}
+                                        </div>
+                                    )}
                                     <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#20C962] border-2 border-white rounded-full"></div>
                                 </div>
 
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-baseline mb-0.5">
-                                        <h4 className={`text-sm truncate ${isSelected ? 'font-bold text-slate-900' : 'font-semibold text-slate-800'}`}>{name}</h4>
-                                        <span className="text-[10px] text-slate-400">{v.requestDate}</span>
+                                        <h4 className={`text-sm truncate ${isSelected ? 'font-bold text-slate-900' : 'font-semibold text-slate-800'}`}>{fullName}</h4>
                                     </div>
-                                    <p className="text-xs text-slate-500 truncate flex items-center gap-1">
-                                        {subtext}
-                                        {hasBitrix && <svg className="w-3 h-3 text-[#2FC6F6]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.072 0a5 5 0 010 7.07M13 12a1 1 0 11-2 0 1 1 0 012 0z" /></svg>}
-                                    </p>
+                                    <p className="text-xs text-slate-500 truncate">{u.WORK_POSITION || 'Usuario Bitrix'}</p>
                                 </div>
                             </div>
                         );
@@ -501,37 +351,34 @@ const Valuations: React.FC = () => {
                 </div>
             </div>
 
-            {/* ÁREA PRINCIPAL */}
-            <div className={`flex-1 flex-col h-full bg-[#F5F7F8] relative min-w-0 ${selectedValuation ? 'flex' : 'hidden md:flex'}`}>
+            {/* ÁREA PRINCIPAL (CHAT) */}
+            <div className={`flex-1 flex-col h-full bg-[#F5F7F8] relative min-w-0 ${selectedUser ? 'flex' : 'hidden md:flex'}`}>
 
-                {selectedValuation ? (
+                {selectedUser ? (
                     <>
                         {/* CABECERA DEL CHAT */}
                         <div className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-6 flex-shrink-0 shadow-sm z-10">
                             <div className="flex items-center gap-3 md:gap-4">
-                                <button onClick={() => setSelectedValuation(null)} className="md:hidden text-slate-500 hover:text-slate-700">
+                                <button onClick={() => setSelectedUser(null)} className="md:hidden text-slate-500 hover:text-slate-700">
                                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                                 </button>
                                 <div className="relative">
-                                    <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm">
-                                        {getInitials(getChatName(selectedValuation))}
-                                    </div>
+                                    {selectedUser.PERSONAL_PHOTO ? (
+                                        <img src={selectedUser.PERSONAL_PHOTO} alt={selectedUser.NAME} className="w-10 h-10 rounded-full object-cover" />
+                                    ) : (
+                                        <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm">
+                                            {getInitials(selectedUser.NAME)}
+                                        </div>
+                                    )}
                                     <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 ${pollingError ? 'bg-red-500' : 'bg-[#20C962]'} border-2 border-white rounded-full`}></div>
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-slate-800 text-base">{getChatName(selectedValuation)}</h3>
+                                    <h3 className="font-bold text-slate-800 text-base">{selectedUser.NAME} {selectedUser.LAST_NAME}</h3>
                                     <p className="text-xs text-slate-500 flex items-center gap-1">
                                         <span className={`w-1.5 h-1.5 ${pollingError ? 'bg-red-500' : 'bg-[#20C962]'} rounded-full`}></span>
-                                        {pollingError ? 'Error de Conexión' : 'Bitrix24 Live'} <span className="text-slate-300">|</span> Perito
+                                        {pollingError ? 'Error de Conexión' : 'En Vivo'} <span className="text-slate-300">|</span> {selectedUser.WORK_POSITION || 'Usuario'}
                                     </p>
                                 </div>
-                            </div>
-
-                            <div className="flex gap-2 text-slate-400 items-center">
-                                {/* ELIMINAR PERITACIÓN (Papelera) */}
-                                <button onClick={handleDeleteValuation} className="hover:text-red-600 text-slate-300 transition-colors p-2" title="Eliminar Solicitud de Peritación">
-                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                </button>
                             </div>
                         </div>
 
@@ -543,10 +390,10 @@ const Valuations: React.FC = () => {
                                 </div>
                             )}
                             {!isLoadingChat && activeMessages.length === 0 && (
-                                <div className="text-center text-slate-400 text-sm mt-10">Aún no se han encontrado mensajes en Bitrix24.</div>
+                                <div className="text-center text-slate-400 text-sm mt-10">No hay mensajes previos con este contacto.</div>
                             )}
                             {activeMessages.map((msg, idx) => {
-                                const isOutgoing = msg.sender === 'Workshop';
+                                const isOutgoing = msg.sender === 'Workshop'; // Workshop = Nosotros (El usuario actual de la app)
                                 const alignRight = isOutgoing;
 
                                 return (
@@ -603,7 +450,7 @@ const Valuations: React.FC = () => {
                                     <input
                                         type="text"
                                         className="flex-1 bg-transparent border-none outline-none text-sm placeholder-slate-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        placeholder={isSending ? "Enviando a Bitrix..." : "Escribe un mensaje..."}
+                                        placeholder={isSending ? "Enviando..." : "Escribe un mensaje..."}
                                         value={chatInput}
                                         disabled={isSending}
                                         onChange={(e) => setChatInput(e.target.value)}
@@ -630,9 +477,6 @@ const Valuations: React.FC = () => {
                                     )}
                                 </button>
                             </div>
-                            <div className="text-center mt-2">
-                                <span className="text-[10px] text-slate-400">Presiona Enter para enviar. Shift+Enter para nueva línea.</span>
-                            </div>
                         </div>
                     </>
                 ) : (
@@ -640,8 +484,8 @@ const Valuations: React.FC = () => {
                         <div className="w-24 h-24 bg-white border border-slate-200 rounded-full flex items-center justify-center mb-6 shadow-sm">
                             <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" /></svg>
                         </div>
-                        <h3 className="text-lg font-medium text-slate-600 mb-1">Selecciona un Chat</h3>
-                        <p className="text-sm">Elige un contacto de la lista para empezar a mensajear vía Bitrix24.</p>
+                        <h3 className="text-lg font-medium text-slate-600 mb-1">Selecciona un Contacto</h3>
+                        <p className="text-sm">Elige un usuario de la lista para empezar.</p>
                     </div>
                 )}
             </div>
