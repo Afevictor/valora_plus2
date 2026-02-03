@@ -351,8 +351,38 @@ export const getCostCalculations = async (clientId?: string) => {
 // --- General DMS Services ---
 export const getClientsFromSupabase = async (): Promise<Client[]> => {
     try {
+        // Check authentication first
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            console.error('❌ [getClients] No authenticated user found');
+            return [];
+        }
+
+        console.log('🔍 [getClients] Authenticated user ID:', user.id);
+        console.log('🔍 [getClients] User metadata:', user.user_metadata);
+
         const { data, error } = await supabase.from('clients').select('*').order('created_at', { ascending: false });
-        if (error) throw error;
+
+        if (error) {
+            console.error('❌ [getClients] Database error:', error);
+            throw error;
+        }
+
+        console.log('📊 [getClients] Raw data from DB:', data?.length || 0, 'records');
+
+        if (data && data.length > 0) {
+            console.log('📊 [getClients] First record:', {
+                id: data[0].id,
+                workshop_id: data[0].workshop_id,
+                name: data[0].name
+            });
+        } else {
+            console.warn('⚠️ [getClients] No clients found in database for this workshop');
+            console.warn('⚠️ [getClients] This could mean:');
+            console.warn('   1. No clients have been created yet');
+            console.warn('   2. RLS policy is filtering out all records');
+            console.warn('   3. Clients were created with a different workshop_id');
+        }
 
         const clientsMap = new Map<string, Client>();
 
@@ -383,7 +413,9 @@ export const getClientsFromSupabase = async (): Promise<Client[]> => {
             }
         });
 
-        return Array.from(clientsMap.values());
+        const result = Array.from(clientsMap.values());
+        console.log('✅ [getClients] Returning', result.length, 'unique clients');
+        return result;
     } catch (e) {
         logError('getClients', e);
         return [];

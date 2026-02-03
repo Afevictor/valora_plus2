@@ -58,19 +58,43 @@ const Valuations: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
 
     // Obtención Inicial de Datos
+    // Obtención Inicial de Datos
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
-            // Cargar Usuarios de Bitrix (Contactos)
-            const bUsers = await getBitrixUsers();
+            try {
+                // Cargar Usuarios de Bitrix (Empleados/Usuarios Internos - "Bitrix Contacts")
+                console.log("🔄 [Valuations] Fetching Bitrix Users...");
+                const bUsers = await getBitrixUsers();
+                console.log("📥 [Valuations] Raw users received:", bUsers?.length || 0);
 
-            // Filtrar usuarios activos y ordenar alfabéticamente
-            const sortedUsers = bUsers
-                .filter(u => u.ACTIVE)
-                .sort((a, b) => a.NAME.localeCompare(b.NAME));
+                if (!bUsers || !Array.isArray(bUsers)) {
+                    console.warn("⚠️ [Valuations] Invalid response format for users");
+                    setBitrixUsers([]);
+                    return;
+                }
 
-            setBitrixUsers(sortedUsers);
-            setIsLoading(false);
+                // Filtrar usuarios y ordenar alfabéticamente
+                // Mostramos todos los usuarios activos (ACTIVE: true)
+                const sortedUsers = bUsers
+                    .filter(u => {
+                        // Robust check for active status (Boolean or 'Y' string)
+                        return u && (u.ACTIVE === true || (u.ACTIVE as any) === 'Y');
+                    })
+                    .sort((a, b) => {
+                        const nameA = a.NAME || '';
+                        const nameB = b.NAME || '';
+                        return nameA.localeCompare(nameB);
+                    });
+
+                console.log("✅ [Valuations] Displaying active users:", sortedUsers.length);
+                setBitrixUsers(sortedUsers);
+            } catch (error) {
+                console.error("❌ [Valuations] Failed to load user list:", error);
+                setBitrixUsers([]);
+            } finally {
+                setIsLoading(false);
+            }
         };
 
         fetchData();

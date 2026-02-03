@@ -10,6 +10,7 @@ const Contacts: React.FC = () => {
     const navigate = useNavigate();
     const [clients, setClients] = useState<Client[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editingClient, setEditingClient] = useState<Client | undefined>(undefined);
@@ -21,13 +22,24 @@ const Contacts: React.FC = () => {
 
     const fetchClients = async () => {
         setLoading(true);
-        const data = await getClientsFromSupabase();
-        if (data && data.length > 0) {
-            setClients(data);
-        } else {
-            setClients([]);
+        setError(null);
+        try {
+            console.log('🔄 [Contacts] Fetching clients...');
+            const data = await getClientsFromSupabase();
+            console.log('📥 [Contacts] Received', data?.length || 0, 'clients');
+
+            if (data && data.length > 0) {
+                setClients(data);
+            } else {
+                setClients([]);
+                console.warn('⚠️ [Contacts] No clients returned from database');
+            }
+        } catch (err: any) {
+            console.error('❌ [Contacts] Error fetching clients:', err);
+            setError(err.message || 'Error al cargar contactos');
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,8 +210,44 @@ const Contacts: React.FC = () => {
                                 <tr><td colSpan={6} className="p-8 text-center text-slate-400">Cargando contactos...</td></tr>
                             )}
 
-                            {!loading && filteredClients.length === 0 && (
+                            {!loading && error && (
+                                <tr>
+                                    <td colSpan={6} className="p-8 text-center">
+                                        <div className="text-red-600 mb-2">❌ Error: {error}</div>
+                                        <button
+                                            onClick={fetchClients}
+                                            className="text-brand-600 hover:text-brand-700 text-sm font-medium"
+                                        >
+                                            Reintentar
+                                        </button>
+                                    </td>
+                                </tr>
+                            )}
+
+                            {!loading && !error && filteredClients.length === 0 && searchTerm && (
                                 <tr><td colSpan={6} className="p-8 text-center text-slate-400">No se encontraron clientes que coincidan con su búsqueda.</td></tr>
+                            )}
+
+                            {!loading && !error && filteredClients.length === 0 && !searchTerm && (
+                                <tr>
+                                    <td colSpan={6} className="p-12 text-center">
+                                        <div className="flex flex-col items-center gap-4">
+                                            <svg className="w-16 h-16 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                            </svg>
+                                            <div>
+                                                <p className="text-slate-600 font-medium mb-1">No hay contactos registrados</p>
+                                                <p className="text-slate-400 text-sm mb-4">Comience agregando su primer cliente</p>
+                                                <button
+                                                    onClick={handleAddNew}
+                                                    className="px-6 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors font-medium"
+                                                >
+                                                    + Agregar Primer Cliente
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
                             )}
 
                             {!loading && filteredClients.map(client => (
