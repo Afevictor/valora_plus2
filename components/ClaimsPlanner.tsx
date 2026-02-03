@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ValuationRequest, ClaimsStage, Employee } from '../types';
-import { getValuationsFromSupabase, updateValuationStage, deleteValuation } from '../services/supabaseClient';
+import { getValuationsFromSupabase, updateValuationStage, deleteValuation, updateValuationExpert } from '../services/supabaseClient';
 import { getBitrixUsers, BitrixUser } from '../services/bitrixService';
 
 // Ciclo de vida distinto para Siniestros (Administrativo/Pericial)
@@ -22,6 +22,11 @@ const ClaimsPlanner: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [draggedClaimId, setDraggedClaimId] = useState<string | null>(null);
+
+    // Estado para Modal de Asignación
+    const [showExpertModal, setShowExpertModal] = useState(false);
+    const [currentAssignClaimId, setCurrentAssignClaimId] = useState<string | null>(null);
+    const [expertSearch, setExpertSearch] = useState('');
 
     useEffect(() => {
         const fetchData = async () => {
@@ -76,6 +81,28 @@ const ClaimsPlanner: React.FC = () => {
         }
     };
 
+    const openAssignModal = (e: React.MouseEvent, claimId: string) => {
+        e.stopPropagation(); // Evitar navegación
+        setCurrentAssignClaimId(claimId);
+        setExpertSearch('');
+        setShowExpertModal(true);
+    };
+
+    const handleAssignExpert = async (expertId: string) => {
+        if (!currentAssignClaimId) return;
+
+        // Optimistic Update
+        setClaims(prev => prev.map(c =>
+            c.id === currentAssignClaimId ? { ...c, assignedExpertId: expertId } : c
+        ));
+
+        setShowExpertModal(false);
+
+        // DB Update
+        await updateValuationExpert(currentAssignClaimId, expertId);
+        setCurrentAssignClaimId(null);
+    };
+
     const getCount = (stage: ClaimsStage) => claims.filter(c => (c.claimsStage || 'draft') === stage).length;
 
     const filteredClaims = claims.filter(c => {
@@ -88,6 +115,10 @@ const ClaimsPlanner: React.FC = () => {
 
         return matchId || matchPlate || matchIns || matchWo || matchClient;
     });
+
+    const filteredExperts = bitrixUsers.filter(u =>
+        `${u.NAME} ${u.LAST_NAME}`.toLowerCase().includes(expertSearch.toLowerCase())
+    );
 
     return (
         <div className="h-[calc(100vh-4rem)] flex flex-col p-4 md:p-6 overflow-hidden bg-slate-50 relative">
@@ -198,18 +229,25 @@ const ClaimsPlanner: React.FC = () => {
                                                         </div>
                                                     </div>
 
-                                                    {/* Perito (Bitrix) */}
-                                                    <div className="flex items-center gap-2 text-xs text-indigo-700 border-t border-slate-200 pt-2">
+                                                    {/* Perito (Bitrix) - CLICKABLE */}
+                                                    <div
+                                                        className="flex items-center gap-2 text-xs text-indigo-700 border-t border-slate-200 pt-2 cursor-pointer hover:bg-indigo-50 p-1 rounded transition-colors"
+                                                        onClick={(e) => openAssignModal(e, claim.id)}
+                                                        title="Clic para asignar perito"
+                                                    >
                                                         <div className="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
                                                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                                         </div>
                                                         <div className="flex flex-col">
                                                             <span className="text-[10px] text-indigo-300 uppercase leading-none">Perito Bitrix</span>
-                                                            <span className="truncate font-bold">
-                                                                {assignedExpert
-                                                                    ? `${assignedExpert.NAME} ${assignedExpert.LAST_NAME}`
-                                                                    : 'Sin asignar'}
-                                                            </span>
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="truncate font-bold">
+                                                                    {assignedExpert
+                                                                        ? `${assignedExpert.NAME} ${assignedExpert.LAST_NAME}`
+                                                                        : 'Sin asignar'}
+                                                                </span>
+                                                                <svg className="w-3 h-3 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -243,6 +281,63 @@ const ClaimsPlanner: React.FC = () => {
                     ))}
                 </div>
             </div>
+
+            {/* MODAL DE ASIGNACIÓN */}
+            {showExpertModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowExpertModal(false)}>
+                    <div
+                        className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden max-h-[80vh] flex flex-col"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h3 className="font-bold text-slate-800">Asignar Perito (Bitrix)</h3>
+                            <button onClick={() => setShowExpertModal(false)} className="text-slate-400 hover:text-slate-600">
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+
+                        <div className="p-4 border-b border-slate-100">
+                            <input
+                                type="text"
+                                placeholder="Buscar perito..."
+                                className="w-full px-4 py-2 bg-slate-100 border-none rounded-lg text-sm focus:ring-2 focus:ring-brand-500 outline-none"
+                                value={expertSearch}
+                                onChange={(e) => setExpertSearch(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-2">
+                            {filteredExperts.length === 0 ? (
+                                <div className="p-4 text-center text-slate-400 text-sm">No se encontraron peritos.</div>
+                            ) : (
+                                <div className="space-y-1">
+                                    {filteredExperts.map(u => (
+                                        <div
+                                            key={u.ID}
+                                            onClick={() => handleAssignExpert(u.ID)}
+                                            className="flex items-center gap-3 p-3 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors group"
+                                        >
+                                            {u.PERSONAL_PHOTO ? (
+                                                <img src={u.PERSONAL_PHOTO} alt={u.NAME} className="w-10 h-10 rounded-full object-cover" />
+                                            ) : (
+                                                <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">
+                                                    {u.NAME.substring(0, 2).toUpperCase()}
+                                                </div>
+                                            )}
+                                            <div>
+                                                <div className="font-bold text-slate-800 text-sm group-hover:text-brand-600">{u.NAME} {u.LAST_NAME}</div>
+                                                <div className="text-xs text-slate-500">{u.WORK_POSITION || 'Perito / Usuario'}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 };

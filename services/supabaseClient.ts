@@ -935,7 +935,35 @@ export const saveAnalysisRequest = async (vId: string, url: string) => {
 };
 export const getAnalysisRequest = async (vId: string) => { try { const { data, error } = await supabase.from('analysis_requests').select('*').eq('valuation_id', vId).order('created_at', { ascending: false }).limit(1).single(); if (error) throw error; return data; } catch (e) { return null; } };
 export const uploadChatAttachment = async (file: File) => { try { const fn = `${Date.now()}_${file.name}`; const { error } = await supabase.storage.from('attachments').upload(fn, file); if (error) throw error; const { data } = await supabase.storage.from('attachments').getPublicUrl(fn); return data.publicUrl; } catch (e) { return null; } };
-export const updateValuationStage = async (id: string, s: ClaimsStage) => { try { const { data: val } = await supabase.from('valuations').select('raw_data').eq('id', id).single(); if (!val) return false; const ur = { ...val.raw_data, claimsStage: s }; const { error } = await supabase.from('valuations').update({ raw_data: ur }).eq('id', id); if (error) throw error; return true; } catch (e) { return false; } };
+export const updateValuationStage = async (id: string, s: ClaimsStage) => {
+    try {
+        const { data: val } = await supabase.from('valuations').select('raw_data').eq('id', id).single();
+        if (!val) return false;
+        const ur = { ...val.raw_data, claimsStage: s };
+        const { error } = await supabase.from('valuations').update({ raw_data: ur }).eq('id', id);
+        if (error) throw error;
+        return true;
+    } catch (e) { return false; }
+};
+
+export const updateValuationExpert = async (id: string, expertId: string) => {
+    try {
+        const { data: val } = await supabase.from('valuations').select('raw_data').eq('id', id).single();
+        if (!val) return false;
+        // Update raw_data
+        const ur = { ...val.raw_data, assignedExpertId: expertId };
+
+        const { error } = await supabase.from('valuations').update({
+            raw_data: ur
+        }).eq('id', id);
+
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        console.error("Error updating expert:", e);
+        return false;
+    }
+};
 export const saveBitrixConfig = async (u: string) => { try { const p = await getCompanyProfileFromSupabase(); if (!p) return false; const up = { ...p, integrations: { ...p.integrations, bitrixUrl: u } }; return await saveCompanyProfileToSupabase(up); } catch (e) { return false; } };
 
 export const getQuotes = async (): Promise<Quote[]> => {
