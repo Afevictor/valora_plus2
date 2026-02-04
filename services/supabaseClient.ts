@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
     CompanyProfile,
     Client,
+    ClientType,
     Employee,
     WorkOrder,
     RepairJob,
@@ -351,71 +352,64 @@ export const getCostCalculations = async (clientId?: string) => {
 // --- General DMS Services ---
 export const getClientsFromSupabase = async (): Promise<Client[]> => {
     try {
-        // Check authentication first
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            console.error('❌ [getClients] No authenticated user found');
-            return [];
-        }
+        if (!user) return [];
 
-        console.log('🔍 [getClients] Authenticated user ID:', user.id);
-        console.log('🔍 [getClients] User metadata:', user.user_metadata);
+        const activeRole = sessionStorage.getItem('vp_active_role') || 'Client';
+        const isAppAdmin = activeRole === 'Admin' || activeRole === 'Admin_Staff';
 
-        const { data, error } = await supabase.from('clients').select('*').order('created_at', { ascending: false });
+        console.log(`🔍 [getClients] Role: ${activeRole} | Fetching from ${isAppAdmin ? 'clients' : 'workshop_customers'}`);
 
-        if (error) {
-            console.error('❌ [getClients] Database error:', error);
-            throw error;
-        }
+        if (isAppAdmin) {
+            // ADMIN: Fetch workshops from 'clients' table
+            const { data, error } = await supabase
+                .from('clients')
+                .select('*')
+                .order('created_at', { ascending: false });
 
-        console.log('📊 [getClients] Raw data from DB:', data?.length || 0, 'records');
-
-        if (data && data.length > 0) {
-            console.log('📊 [getClients] First record:', {
-                id: data[0].id,
-                workshop_id: data[0].workshop_id,
-                name: data[0].name
+            if (error) throw error;
+            return (data || []).map(d => {
+                const raw = d.raw_data || {};
+                return {
+                    ...raw,
+                    id: d.id,
+                    workshop_id: d.workshop_id,
+                    name: d.name || raw.name || 'Sin Nombre',
+                    email: d.email || raw.email || '',
+                    phone: d.phone || raw.phone || '',
+                    taxId: d.taxId || raw.taxId || '',
+                    clientType: (d.clientType || raw.clientType || 'Individual') as ClientType
+                };
             });
         } else {
-            console.warn('⚠️ [getClients] No clients found in database for this workshop');
-            console.warn('⚠️ [getClients] This could mean:');
-            console.warn('   1. No clients have been created yet');
-            console.warn('   2. RLS policy is filtering out all records');
-            console.warn('   3. Clients were created with a different workshop_id');
+            // WORKSHOP: Fetch their own customers from 'workshop_customers'
+            const { data, error } = await supabase
+                .from('workshop_customers')
+                .select('*')
+                .eq('workshop_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            return (data || []).map(d => {
+                const raw = d.raw_data || {};
+                return {
+                    ...raw,
+                    id: d.id,
+                    workshop_id: d.workshop_id,
+                    name: d.full_name || raw.name || 'Sin Nombre',
+                    clientType: (d.customer_type || raw.clientType || 'Individual') as ClientType,
+                    isCompany: d.customer_type === 'Company',
+                    taxId: d.tax_id || raw.taxId || '',
+                    phone: d.phone || raw.phone || '',
+                    email: d.email || raw.email || '',
+                    address: d.address || raw.address || '',
+                    city: d.city || raw.city || '',
+                    province: d.province || raw.province || '',
+                    zip: d.postal_code || raw.zip || '',
+                    notes: d.notes || raw.notes || ''
+                };
+            });
         }
-
-        const clientsMap = new Map<string, Client>();
-
-        (data || []).forEach(d => {
-            const raw = d.raw_data || {};
-            const client: Client = {
-                ...raw,
-                id: d.id,
-                workshop_id: d.workshop_id,
-                name: d.name || raw.name || 'Sin Nombre',
-                email: d.email || raw.email || '',
-                phone: raw.phone || '',
-                taxId: raw.taxId || ''
-            };
-
-            // Deduplication strategy: Use Email or Tax ID as identity if ID differs
-            // This handles cases where a client is manually added AND signs up as a user
-            const identityKey = (client.email?.toLowerCase() || client.taxId?.toLowerCase() || client.id);
-
-            if (!clientsMap.has(identityKey)) {
-                clientsMap.set(identityKey, client);
-            } else {
-                // If collision, keep the one with more data (e.g. taxId) or the most recent (which Map allows by order)
-                const existing = clientsMap.get(identityKey)!;
-                if (!existing.taxId && client.taxId) {
-                    clientsMap.set(identityKey, client);
-                }
-            }
-        });
-
-        const result = Array.from(clientsMap.values());
-        console.log('✅ [getClients] Returning', result.length, 'unique clients');
-        return result;
     } catch (e) {
         logError('getClients', e);
         return [];
@@ -427,14 +421,48 @@ export const saveClientToSupabase = async (client: Client) => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("Authenticated user required to save client");
 
-        const { error } = await supabase.from('clients').upsert({
-            id: client.id,
-            workshop_id: user.id,
-            name: client.name,
-            email: client.email,
-            raw_data: client
-        });
-        if (error) throw error;
+        const activeRole = sessionStorage.getItem('vp_active_role') || 'Client';
+        const isAppAdmin = activeRole === 'Admin' || activeRole === 'Admin_Staff';
+
+        if (isAppAdmin) {
+            // ADMIN: Save to 'clients' table
+            const payload = {
+                id: client.id,
+                workshop_id: user.id,
+                name: client.name,
+                email: client.email,
+                phone: client.phone,
+                taxId: client.taxId,
+                address: client.address,
+                city: client.city,
+                zip: client.zip,
+                province: client.province,
+                clientType: client.clientType,
+                isCompany: client.isCompany,
+                raw_data: client
+            };
+            const { error } = await supabase.from('clients').upsert(payload);
+            if (error) throw error;
+        } else {
+            // WORKSHOP: Save to 'workshop_customers' table
+            const payload = {
+                id: client.id,
+                workshop_id: user.id,
+                customer_type: client.clientType || 'Individual',
+                full_name: client.name,
+                phone: client.phone,
+                email: client.email,
+                tax_id: client.taxId,
+                address: client.address,
+                city: client.city,
+                province: client.province,
+                postal_code: client.zip,
+                notes: client.notes,
+                raw_data: client
+            };
+            const { error } = await supabase.from('workshop_customers').upsert(payload);
+            if (error) throw error;
+        }
         return true;
     } catch (e) {
         logError('saveClient', e);
@@ -442,9 +470,35 @@ export const saveClientToSupabase = async (client: Client) => {
     }
 };
 
+/**
+ * Specifically for self-registration of a Workshop into the Master Clients List (for Admin view)
+ */
+export const saveWorkshopAsClient = async (client: Client) => {
+    try {
+        const payload = {
+            id: client.id,
+            workshop_id: client.id, // Self-governed
+            name: client.name,
+            email: client.email,
+            // Minimal schema only supports: id, workshop_id, name, email, raw_data
+            raw_data: client
+        };
+        const { error } = await supabase.from('clients').upsert(payload);
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        logError('saveWorkshopAsClient', e);
+        return false;
+    }
+};
+
 export const deleteClient = async (id: string) => {
     try {
-        const { error } = await supabase.from('clients').delete().eq('id', id);
+        const activeRole = sessionStorage.getItem('vp_active_role') || 'Client';
+        const isAppAdmin = activeRole === 'Admin' || activeRole === 'Admin_Staff';
+        const table = isAppAdmin ? 'clients' : 'workshop_customers';
+
+        const { error } = await supabase.from(table).delete().eq('id', id);
         if (error) throw error;
         return { success: true };
     } catch (error) {
@@ -460,18 +514,26 @@ export const getWorkOrdersFromSupabase = async (): Promise<RepairJob[]> => {
         const userType = user.user_metadata?.user_type;
         let query = supabase.from('work_orders').select('*');
 
-        // Isolation: If Client, only show their own OTs
-        if (userType === 'client') {
-            query = query.eq('client_id', user.id);
-        }
+        // Isolation: Handled by RLS policies on the database level
+        // (Workshops see work_orders.workshop_id = auth.uid, Clients see work_orders.client_id = auth.uid)
 
         const { data, error } = await query;
         if (error) throw error;
-        return data?.map(d => ({
-            ...d.raw_data,
-            insurancePayment: d.insurance_payment,
-            insurancePaymentStatus: d.insurance_payment_status
-        } as RepairJob)) || [];
+        return data?.map(d => {
+            const raw = d.raw_data || {};
+            return {
+                ...raw,
+                id: d.id,
+                status: d.status || raw.status,
+                plate: d.plate || raw.plate,
+                vehicle: d.vehicle || raw.vehicle,
+                insuredName: d.insured_name || raw.insuredName,
+                expedienteId: d.expediente_id || raw.expedienteId,
+                entryDate: d.entry_date || raw.entryDate,
+                insurancePayment: d.insurance_payment,
+                insurancePaymentStatus: d.insurance_payment_status
+            } as RepairJob;
+        }) || [];
     } catch (e) {
         logError('getWorkOrders', e);
         return [];
@@ -486,11 +548,21 @@ export const getWorkOrdersByClient = async (clientId: string): Promise<WorkOrder
             .eq('client_id', clientId);
 
         if (error) throw error;
-        return (data || []).map(d => ({
-            ...d.raw_data,
-            insurancePayment: d.insurance_payment,
-            insurancePaymentStatus: d.insurance_payment_status
-        } as WorkOrder));
+        return (data || []).map(d => {
+            const raw = d.raw_data || {};
+            return {
+                ...raw,
+                id: d.id,
+                status: d.status || raw.status,
+                plate: d.plate || raw.plate,
+                vehicle: d.vehicle || raw.vehicle,
+                insuredName: d.insured_name || raw.insuredName,
+                expedienteId: d.expediente_id || raw.expedienteId,
+                entryDate: d.entry_date || raw.entryDate,
+                insurancePayment: d.insurance_payment,
+                insurancePaymentStatus: d.insurance_payment_status
+            } as WorkOrder;
+        });
     } catch (e) {
         logError('getWorkOrdersByClient', e);
         return [];
@@ -585,16 +657,45 @@ export const getCompanyProfileFromSupabase = async (): Promise<CompanyProfile | 
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return null;
 
-        const { data, error } = await supabase
-            .from('company_profiles') // Correct Table
+        // 1. Try fetching from company_profiles
+        let { data, error } = await supabase
+            .from('company_profiles')
             .select('*')
             .eq('id', user.id)
             .maybeSingle();
 
         if (error) throw error;
+
+        // 2. FALLBACK: If not in company_profiles, check 'clients' table (Master list of workshops)
+        if (!data) {
+            console.log("Profile not found in company_profiles, checking 'clients' fallback...");
+            const { data: workshopData, error: workshopError } = await supabase
+                .from('clients')
+                .select('*')
+                .eq('id', user.id)
+                .maybeSingle();
+
+            if (!workshopError && workshopData) {
+                data = {
+                    id: workshopData.id,
+                    company_name: workshopData.name,
+                    cif: workshopData.taxId,
+                    address: workshopData.address,
+                    city: workshopData.city,
+                    zip_code: workshopData.zip,
+                    province: workshopData.province,
+                    email: workshopData.email,
+                    phone: workshopData.phone,
+                    coste_hora: 0,
+                    pvp_mano_obra: 0,
+                    subscription_tier: 'free'
+                };
+            }
+        }
+
         if (!data) return null;
 
-        const rawName = data.company_name;
+        const rawName = (data as any).company_name;
         // Aggressive filter for the unwanted default name
         const isDefault = !rawName ||
             rawName.toLowerCase().includes('mecanico') ||
@@ -604,20 +705,20 @@ export const getCompanyProfileFromSupabase = async (): Promise<CompanyProfile | 
 
         return {
             companyName: sanitizedName,
-            cif: data.cif,
-            address: data.address,
-            city: data.city,
-            zipCode: data.zip_code,
-            province: data.province,
-            email: data.email,
-            phone: data.phone,
-            costeHora: data.coste_hora,
-            pvpManoObra: data.pvp_mano_obra,
-            subscriptionTier: data.subscription_tier || 'free',
-            defaultExpertId: data.default_expert_id,
-            defaultExpertName: data.default_expert_name,
+            cif: (data as any).cif,
+            address: (data as any).address,
+            city: (data as any).city,
+            zipCode: (data as any).zip_code,
+            province: (data as any).province,
+            email: (data as any).email,
+            phone: (data as any).phone,
+            costeHora: (data as any).coste_hora || 0,
+            pvpManoObra: (data as any).pvp_mano_obra || 0,
+            subscriptionTier: (data as any).subscription_tier || 'free',
+            defaultExpertId: (data as any).default_expert_id,
+            defaultExpertName: (data as any).default_expert_name,
             integrations: {
-                bitrixUrl: data.bitrix_webhook_url || ''
+                bitrixUrl: (data as any).bitrix_webhook_url || ''
             }
         };
     } catch (e) {
@@ -1162,3 +1263,93 @@ export const saveBitrixSettingsToSupabase = async (webhookUrl: string, expertId?
         throw e;
     }
 };
+
+// --- WORKSHOP CUSTOMERS SERVICE ---
+
+export interface WorkshopCustomer {
+    id: string;
+    workshop_id: string;
+    customer_type: 'Individual' | 'Company';
+    full_name: string;
+    phone: string;
+    email: string;
+    tax_id: string;
+    address: string;
+    city: string;
+    province: string;
+    postal_code: string;
+    notes?: string;
+    created_at?: string;
+}
+
+export const getWorkshopCustomers = async (): Promise<WorkshopCustomer[]> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
+
+        const { data, error } = await supabase
+            .from('workshop_customers')
+            .select('*')
+            .eq('workshop_id', user.id)
+            .order('full_name', { ascending: true });
+
+        if (error) {
+            console.error('Error fetching workshop customers:', error);
+            return [];
+        }
+
+        return data || [];
+    } catch (e) {
+        console.error('Exception fetching workshop customers:', e);
+        return [];
+    }
+};
+
+export const saveWorkshopCustomer = async (customer: Partial<WorkshopCustomer>): Promise<WorkshopCustomer | null> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("No authenticated user");
+
+        const payload = {
+            ...customer,
+            workshop_id: user.id
+        };
+
+        // If ID exists, update; else insert
+        if (customer.id) {
+            const { data, error } = await supabase
+                .from('workshop_customers')
+                .update(payload)
+                .eq('id', customer.id)
+                .select()
+                .single();
+
+            if (error) throw error;
+            return data;
+        } else {
+            // Remove ID if empty string to allow auto-gen
+            const { id, ...insertPayload } = payload;
+            const { data, error } = await supabase
+                .from('workshop_customers')
+                .insert([insertPayload])
+                .select()
+                .single();
+
+            if (error) throw error;
+            return data;
+        }
+    } catch (e) {
+        console.error('Error saving workshop customer:', e);
+        return null;
+    }
+};
+
+export const deleteWorkshopCustomer = async (id: string): Promise<boolean> => {
+    try {
+        const { error } = await supabase.from('workshop_customers').delete().eq('id', id);
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}

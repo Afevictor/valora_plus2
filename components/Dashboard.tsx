@@ -57,7 +57,6 @@ const Dashboard: React.FC = () => {
       if (role === 'Client' && user) {
         const clientProfile = allClients.find((c: Client) => c.id === user.id);
         if (clientProfile) setDisplayName(clientProfile.name);
-        filteredOrders = orderData.filter((o: RepairJob) => o.clientId === user.id);
       } else {
         const raw = profile?.companyName || 'Valora Plus';
         const isBad = raw.toLowerCase().includes('mecanico') || raw.toLowerCase().includes('mecánico') || raw.includes('45');

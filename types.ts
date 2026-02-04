@@ -259,7 +259,7 @@ export interface ValuationRequest {
   videoUrl?: string;
 }
 
-export type ClaimsStage = 'draft' | 'sent_expert' | 'in_review' | 'report_issued' | 'negotiation' | 'analytics';
+export type ClaimsStage = 'draft' | 'pending_admin' | 'sent_expert' | 'in_review' | 'report_issued' | 'negotiation' | 'analytics';
 
 export interface ValuationChatMsg {
   id: string;

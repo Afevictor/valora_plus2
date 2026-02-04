@@ -24,6 +24,8 @@ import LandingPage from './components/LandingPage';
 import ClientAnalysisPortal from './components/ClientAnalysisPortal';
 import Subscription from './components/Subscription';
 import Auth from './components/Auth';
+import AppraisersManagement from './components/AppraisersManagement';
+import AdminValuationsQueue from './components/AdminValuationsQueue';
 import { supabase, checkIsWorkshopAuthEmail } from './services/supabaseClient';
 import { AppRole } from './types';
 
@@ -232,6 +234,11 @@ const App = () => {
                     <Valuations />
                   </ProtectedRoleRoute>
                 } />
+                <Route path="/admin/queue" element={
+                  <ProtectedRoleRoute allowedRoles={['Admin', 'Admin_Staff']} activeRole={activeRole as AppRole}>
+                    <AdminValuationsQueue />
+                  </ProtectedRoleRoute>
+                } />
                 <Route path="/new-valuation" element={
                   <ProtectedRoleRoute allowedRoles={['Admin', 'Admin_Staff', 'Client']} activeRole={activeRole as AppRole}>
                     <NewValuation />
@@ -277,7 +284,7 @@ const App = () => {
                   </ProtectedRoleRoute>
                 } />
                 <Route path="/contacts" element={
-                  <ProtectedRoleRoute allowedRoles={['Admin']} activeRole={activeRole as AppRole}>
+                  <ProtectedRoleRoute allowedRoles={['Admin', 'Client']} activeRole={activeRole as AppRole}>
                     <Contacts />
                   </ProtectedRoleRoute>
                 } />
@@ -294,6 +301,11 @@ const App = () => {
                 <Route path="/bitrix-config" element={
                   <ProtectedRoleRoute allowedRoles={['Admin']} activeRole={activeRole as AppRole}>
                     <BitrixConfig />
+                  </ProtectedRoleRoute>
+                } />
+                <Route path="/appraisers" element={
+                  <ProtectedRoleRoute allowedRoles={['Admin']} activeRole={activeRole as AppRole}>
+                    <AppraisersManagement />
                   </ProtectedRoleRoute>
                 } />
 

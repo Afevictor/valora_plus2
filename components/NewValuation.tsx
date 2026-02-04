@@ -73,62 +73,47 @@ const NewValuation: React.FC = () => {
             const role = sessionStorage.getItem('vp_active_role');
             if (user) setCurrentUserId(user.id);
 
-            if (role === 'Client' && user) {
-                // Pre-fill workshop details from clients table for authentication display
-                const allClients = await getClientsFromSupabase();
-                const me = allClients.find(c => c.id === user.id);
-                if (me) {
-                    setFormData(prev => ({
-                        ...prev,
-                        insuredName: me.name,
-                        workshop: { // Workshop in this context means 'Solicitant'
-                            name: me.name,
-                            cif: me.taxId || '',
-                            contact: me.email || '',
-                            province: me.city || ''
-                        }
-                    }));
-                    fetchCosts(me.id); // Auto fetch costs
+            // 1. ALWAYS FETCH WORKSHOP PROFILE FOR STEP 1
+            const profile = await getCompanyProfileFromSupabase();
+            if (profile) {
+                setFormData(prev => ({
+                    ...prev,
+                    workshop: {
+                        name: profile.companyName,
+                        cif: profile.cif,
+                        contact: `${profile.email} - ${profile.phone}`,
+                        province: profile.province
+                    },
+                    // If no insured name yet, maybe it's for their own vehicle? 
+                    // But usually they select a client.
+                }));
 
-                    // Fetch client's work orders
-                    const workOrders = await getWorkOrdersFromSupabase();
-                    console.log('Fetched work orders for client:', workOrders);
-                    setAvailableWorkOrders(workOrders);
+                // Auto-fetch costs for this workshop
+                fetchCosts(user?.id);
 
-                    // If client has a workshop_id, fetch that workshop's settings (Default Expert)
-                    if (me.workshop_id) {
-                        setWorkshopId(me.workshop_id);
-                        getCompanyProfileById(me.workshop_id).then(profile => {
-                            if (profile?.defaultExpertId) {
-                                setFormData(prev => ({ ...prev, assignedExpertId: profile.defaultExpertId }));
-                            }
-                        });
-                        handleRefreshBitrixUsers(me.workshop_id);
-                    } else {
-                        handleRefreshBitrixUsers();
-                    }
+                if (profile.defaultExpertId) {
+                    setFormData(prev => ({ ...prev, assignedExpertId: profile.defaultExpertId }));
                 }
+            }
+
+            // 2. ROLE SPECIFIC LOGIC
+            if (role === 'Client' && user) {
+                // Fetch client's work orders (Workshop's active OTs)
+                const workOrders = await getWorkOrdersFromSupabase();
+                console.log('Fetched work orders for workshop:', workOrders);
+                setAvailableWorkOrders(workOrders);
+
+                // If user has a workshop_id (though for workshops they ARE the workshop_id)
+                // In this context, role=Client means workshop owner.
+                setWorkshopId(user.id);
+                handleRefreshBitrixUsers(user.id);
+
             } else {
                 // Admin context
                 if (user) setWorkshopId(user.id);
-                getCompanyProfileFromSupabase().then(profile => {
-                    if (profile) {
-                        setFormData(prev => ({
-                            ...prev,
-                            workshop: {
-                                name: profile.companyName,
-                                cif: profile.cif,
-                                contact: `${profile.email} - ${profile.phone}`,
-                                province: profile.province
-                            }
-                        }));
-                    }
-                });
                 handleRefreshBitrixUsers();
-            }
 
-            // 3. Fetch Clients independently (for Admin dropdown)
-            if (role !== 'Client') {
+                // 3. Fetch Clients independently (for Admin dropdown)
                 getClientsFromSupabase().then(allClients => {
                     if (allClients) {
                         setClients(allClients);
@@ -441,20 +426,19 @@ const NewValuation: React.FC = () => {
             // --- STEP 2: PREPARE FINAL DATA ---
             const finalData = {
                 ...formData,
-                claimsStage: formData.claimsStage || 'draft',
+                claimsStage: 'pending_admin', // ALWAYS START AS PENDING ADMIN NOW
                 photos: photoUrls, // Save real cloud URLs
                 documents: docUrls, // Save real cloud URLs
                 videoUrl: finalVideoUrl || formData.videoUrl
             } as ValuationRequest;
 
             // --- STEP 3: SAVE TO VALORA PLUS DB ---
-            setStatusMessage('Guardando en la base de datos de Valora Plus...');
+            setStatusMessage('Enviando solicitud para revisión de administración...');
 
             // Supabase
             const result = await saveValuationToSupabase(finalData, workshopId || undefined);
             if (!result) {
-                console.warn("Database save failed, but proceeding to Bitrix...");
-                alert("⚠️ Error: No se pudo guardar en la base de datos de Valora Plus. Compruebe su conexión o permisos de base de datos.");
+                throw new Error("No se pudo guardar la solicitud en la base de datos.");
             }
 
             // Update linked WO
@@ -471,47 +455,7 @@ const NewValuation: React.FC = () => {
                 }
             }
 
-            // --- STEP 4: PUSH TO BITRIX CRM ---
-            setStatusMessage('Enviando datos al CRM de Bitrix24...');
-            const selectedCost = costOptions.find(c => c.periodo === formData.costReference);
-
-            // Fallback: If workshopId is missing, try to get it again from session
-            let finalWorkshopId = workshopId;
-            if (!finalWorkshopId) {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) finalWorkshopId = user.id;
-            }
-
-            // Detect Expert Type (User vs Contact)
-            let expertIsContact = false;
-            let finalExpertId = formData.assignedExpertId;
-
-            if (formData.assignedExpertId?.startsWith('contact_')) {
-                expertIsContact = true;
-                finalExpertId = formData.assignedExpertId.replace('contact_', '');
-            } else {
-                // Fallback check just in case (legacy data)
-                const selectedExpert = bitrixUsers.find(u => u.ID === formData.assignedExpertId);
-                expertIsContact = selectedExpert?.IS_CONTACT || false;
-            }
-
-            console.log(`[Submit] Expert Type Check: RawID=${formData.assignedExpertId}, FinalID=${finalExpertId}, IsContact=${expertIsContact}`);
-
-            // Create a temp copy of data with the clean ID
-            const dataForBitrix = { ...finalData, assignedExpertId: finalExpertId };
-
-            const bitrixResult = await pushValuationToBitrix(dataForBitrix, fileLinks, selectedCost, finalWorkshopId || undefined, expertIsContact);
-
-            if (!bitrixResult.success) {
-                console.warn("Bitrix push failed, but local data saved:", bitrixResult.error);
-                alert(`Solicitud guardada en Valora Plus, pero falló el envío al CRM de Bitrix24.\nError: ${bitrixResult.error}`);
-            } else {
-                console.log("✅ Bitrix Push SUCCESS. ID:", bitrixResult.id);
-                // Move to 'sent_expert' stage if successfully pushed to CRM
-                await updateValuationStage(finalData.id, 'sent_expert');
-            }
-
-            // --- STEP 5: LOG TO CENTRAL ACTIVITY FEED (HIGH RELIABILITY) ---
+            // --- STEP 4: LOG TO CENTRAL ACTIVITY FEED ---
             console.log("[VALUATION SUBMIT] Logging to global activity feed...");
             const activityFiles = fileLinks.map(fl => ({
                 url: fl.url,
@@ -520,15 +464,13 @@ const NewValuation: React.FC = () => {
                 type: fl.type === 'image' ? 'image' : 'pdf'
             }));
 
-            // Find client ID by name fallback if not explicitly linked in formData
             const matchedClient = clients.find(c => c.name === formData.insuredName);
-
             await logClientActivity({
                 client_id: matchedClient?.id,
                 plate: formData.vehicle?.plate || '',
                 expediente_id: formData.id || '',
-                activity_type: 'valuation_request',
-                summary: formData.notes || `New valuation request for ${formData.vehicle?.brand} ${formData.vehicle?.model}`,
+                activity_type: 'valuation_request_pending',
+                summary: `Nueva solicitud de peritación pendiente de aprobación: ${formData.vehicle?.brand} ${formData.vehicle?.model}`,
                 file_assets: activityFiles,
                 raw_data: {
                     valuation: finalData,
@@ -536,31 +478,13 @@ const NewValuation: React.FC = () => {
                 }
             });
 
-            // --- STEP 6: SAVE ANONYMIZED VALUATION ---
-            console.log("[VALUATION SUBMIT] Saving anonymized valuation...");
-            const nameParts = (formData.insuredName || '').trim().split(' ');
-            const firstName = nameParts[0] || '';
-            const lastName = nameParts.slice(1).join(' ') || '';
-
-            const anonymizedPhotos = fileLinks
-                .filter(fl => fl.type === 'image')
-                .map(fl => fl.url);
-
-            await saveAnonymizedValuation({
-                valuation_id: finalData.id,
-                order_number: formData.vehicle?.plate || '',
-                registration_number: formData.vehicle?.plate || '',
-                first_name: firstName,
-                last_name: lastName,
-                photos: anonymizedPhotos,
-                mileage: formData.vehicle?.km || 0,
-                labour_cost: selectedCost?.resultado_calculo?.hourlyCost || 0
-            });
+            // NOTE: Bitrix and DAT Automation push (previously Steps 4 & 6) 
+            // are now handled in the Admin Approval Queue.
 
             setStep(5); // Success Screen
-        } catch (error) {
+        } catch (error: any) {
             console.error("Submission failed", error);
-            alert("Error crítico durante el envío. Revise la consola.");
+            alert(`Error durante el envío: ${error.message || 'Error desconocido'}`);
         } finally {
             setLoading(false);
             setStatusMessage('');
@@ -576,9 +500,9 @@ const NewValuation: React.FC = () => {
                     <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
                         <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                     </div>
-                    <h2 className="text-4xl font-black text-slate-900 mb-4">¡Gracias!</h2>
+                    <h2 className="text-4xl font-black text-slate-900 mb-4">Solicitud Recibida</h2>
                     <p className="text-xl text-slate-600 mb-10 max-w-lg mx-auto font-medium">
-                        Recibirás el informe por correo electrónico
+                        Su solicitud ha sido enviada correctamente y está <b>pendiente de validación por administración</b>.
                     </p>
                     <div className="flex justify-center">
                         <button

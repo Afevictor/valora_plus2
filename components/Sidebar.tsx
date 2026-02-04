@@ -14,33 +14,35 @@ const NavItem = ({ to, icon, label, active, isClient }: { to: string, icon: Reac
   return (
     <Link
       to={to}
-      className={`group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 mb-1.5 relative overflow-hidden ${active
-        ? isClient ? 'bg-emerald-600/10 text-emerald-400' : 'bg-slate-600/10 text-slate-400'
-        : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+      className={`group flex items-center gap-3 px-4 py-3 rounded-[14px] transition-all duration-300 mb-1 relative overflow-hidden ${active
+        ? isClient
+          ? 'bg-emerald-500/25 text-white border border-emerald-400/40 shadow-[0_0_20px_rgba(16,185,129,0.1)]'
+          : 'bg-brand-500/25 text-white border border-brand-400/40 shadow-[0_0_20px_rgba(59,130,246,0.1)]'
+        : 'text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 border border-transparent'
         }`}
     >
       {active && (
-        <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full ${isClient ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]' : 'bg-slate-500 shadow-[0_0_12px_rgba(148,163,184,0.8)]'}`} />
+        <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-6 rounded-r-full ${isClient ? 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.6)]' : 'bg-brand-500 shadow-[0_0_15px_rgba(99,102,241,0.6)]'}`} />
       )}
 
-      <div className={`transition-transform duration-300 group-hover:scale-110 ${active ? 'text-inherit' : 'text-slate-500 group-hover:text-slate-300'}`}>
+      <div className={`transition-all duration-500 group-hover:scale-110 ${active ? 'text-inherit scale-110' : 'text-slate-500 group-hover:text-slate-300'}`}>
         {icon}
       </div>
 
-      <span className={`font-semibold text-sm tracking-tight transition-all duration-300 ${active ? 'translate-x-1' : 'group-hover:translate-x-0.5'}`}>
+      <span className={`text-xs font-black uppercase tracking-widest transition-all duration-300 ${active ? 'translate-x-1' : 'group-hover:translate-x-0.5'}`}>
         {label}
       </span>
 
       {active && (
-        <div className={`absolute right-2 w-1.5 h-1.5 rounded-full ${isClient ? 'bg-emerald-500' : 'bg-slate-500'} animate-pulse`} />
+        <div className={`absolute right-3 w-1.5 h-1.5 rounded-full ${isClient ? 'bg-emerald-500' : 'bg-brand-500'} animate-pulse`} />
       )}
     </Link>
   );
 };
 
 const SectionHeader = ({ label }: { label: string }) => (
-  <div className="px-4 mt-8 mb-3">
-    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{label}</p>
+  <div className="px-5 mt-10 mb-4">
+    <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em] opacity-80">{label}</p>
   </div>
 );
 
@@ -63,6 +65,8 @@ const KanbanIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" strok
 const CalculatorIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" /><line x1="8" y1="6" x2="16" y2="6" /><line x1="16" y1="14" x2="16" y2="18" /><path d="M16 10h.01" /><path d="M12 10h.01" /><path d="M8 10h.01" /><path d="M12 14h.01" /><path d="M8 14h.01" /><path d="M12 18h.01" /><path d="M8 18h.01" /></svg></IconWrapper>;
 const ChartIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83" /><path d="M22 12A10 10 0 0 0 12 2v10z" /></svg></IconWrapper>;
 const UserIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg></IconWrapper>;
+const ExpertIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg></IconWrapper>; // Modified User Group / Badge idea
+const QueueIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" ry="1" /><path d="M9 12h6" /><path d="M9 16h6" /></svg></IconWrapper>;
 
 const NotificationCenter = React.lazy(() => import('./NotificationCenter'));
 
@@ -132,6 +136,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
                 <SectionHeader label="Portal del Taller" />
                 <NavItem to="/" icon={<DashboardIcon />} label="Mis Reparaciones" active={location.pathname === '/'} isClient={true} />
                 <NavItem to="/kanban" icon={<KanbanIcon />} label="Tablero de Progreso" active={location.pathname === '/kanban'} isClient={true} />
+                <NavItem to="/contacts" icon={<ContactIcon />} label="Mis Clientes" active={location.pathname === '/contacts'} isClient={true} />
                 <NavItem to="/history-ot" icon={<HistoryIcon />} label="Historial Reparaciones" active={location.pathname === '/history-ot'} isClient={true} />
 
                 <NavItem to="/analytics" icon={<ChartIcon />} label="Análisis / Informes" active={location.pathname === '/analytics'} isClient={true} />
@@ -141,19 +146,20 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
               </>
             ) : (
               <>
-                <SectionHeader label="Principal" />
+                <SectionHeader label="Valora Control" />
                 <NavItem to="/" icon={<DashboardIcon />} label="Panel de Gestión" active={location.pathname === '/'} isClient={false} />
 
-                <SectionHeader label="Peritación & Siniestros" />
-                <NavItem to="/valuations" icon={<ValuationsIcon />} label="Solicitudes Peritación" active={location.pathname === '/valuations'} isClient={false} />
-                <NavItem to="/claims-planner" icon={<ShieldIcon />} label="Planificador de Siniestros" active={location.pathname === '/claims-planner'} isClient={false} />
+                <SectionHeader label="Appraisal Hub" />
+                <NavItem to="/admin/queue" icon={<QueueIcon />} label="Cola de Aprobación" active={location.pathname === '/admin/queue'} isClient={false} />
+                <NavItem to="/valuations" icon={<ValuationsIcon />} label="Chat de Peritos" active={location.pathname === '/valuations'} isClient={false} />
+                <NavItem to="/claims-planner" icon={<ShieldIcon />} label="Planificador Kanban" active={location.pathname === '/claims-planner'} isClient={false} />
                 <NavItem to="/history-claims" icon={<ArchiveIcon />} label="Historial Siniestros" active={location.pathname === '/history-claims'} isClient={false} />
 
-                <SectionHeader label="Ventas & Operaciones" />
-                <NavItem to="/contacts" icon={<ContactIcon />} label="Talleres" active={location.pathname === '/contacts'} isClient={false} />
+                <SectionHeader label="B2B & Operaciones" />
+                <NavItem to="/contacts" icon={<ContactIcon />} label="Talleres Asociados" active={location.pathname === '/contacts'} isClient={false} />
 
-                <SectionHeader label="Sistema" />
-                <NavItem to="/bitrix-config" icon={<LinkIcon />} label="Bitrix24 Link" active={location.pathname === '/bitrix-config'} isClient={false} />
+                <SectionHeader label="Configuración" />
+                <NavItem to="/bitrix-config" icon={<LinkIcon />} label="Conexión Bitrix24" active={location.pathname === '/bitrix-config'} isClient={false} />
               </>
             )}
 
@@ -169,27 +175,27 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
             )}
           </nav>
 
-          <footer className="p-4 shrink-0 mt-auto bg-slate-900/50 backdrop-blur-md border-t border-white/5">
-            <div className="flex items-center gap-3 p-2 rounded-2xl hover:bg-white/5 transition-colors group relative">
+          <footer className="p-6 shrink-0 mt-auto bg-slate-950/40 backdrop-blur-xl border-t border-white/5">
+            <div className="flex items-center gap-4 p-3 rounded-2xl hover:bg-white/5 transition-all duration-300 group relative border border-transparent hover:border-white/5 shadow-xl">
               {!isClient && (
-                <div className="absolute -top-12 right-4">
+                <div className="absolute -top-14 right-4 z-20">
                   <React.Suspense fallback={<div className="h-10 w-10" />}>
                     <NotificationCenter />
                   </React.Suspense>
                 </div>
               )}
-              <div className={`w-11 h-11 rounded-2xl ${isClient ? 'bg-emerald-600 shadow-emerald-500/20' : 'bg-brand-600 shadow-brand-500/20'} text-white shadow-lg flex items-center justify-center font-black relative overflow-hidden group-hover:rotate-3 transition-transform duration-300 ring-2 ring-white/10`}>
-                <span className="relative z-10">{activeRole ? activeRole.charAt(0) : 'U'}</span>
-                <div className="absolute inset-0 bg-gradient-to-tr from-black/20 to-transparent" />
+              <div className={`w-12 h-12 rounded-2xl ${isClient ? 'bg-emerald-600 shadow-emerald-500/30' : 'bg-brand-600 shadow-brand-500/30'} text-white shadow-lg flex items-center justify-center font-black relative overflow-hidden group-hover:scale-105 transition-transform duration-500 ring-2 ring-white/10 shrink-0`}>
+                <span className="relative z-10 text-lg">{activeRole ? activeRole.charAt(0) : 'U'}</span>
+                <div className="absolute inset-0 bg-gradient-to-tr from-black/20 via-transparent to-white/10" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-black text-white truncate leading-tight tracking-tight">{displayName}</p>
-                <div className="flex items-center justify-between mt-0.5">
-                  <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${isClient ? 'bg-emerald-500/20 text-emerald-400' : 'bg-brand-500/20 text-brand-400'}`}>
-                    {activeRole === 'Client' ? 'Taller' : (activeRole || 'User')}
+                <p className="text-sm font-black text-white truncate leading-tight tracking-tight mb-1">{displayName}</p>
+                <div className="flex items-center justify-between">
+                  <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${isClient ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/10' : 'bg-brand-500/20 text-brand-400 border border-brand-500/10'}`}>
+                    {activeRole === 'Client' ? 'Taller' : (activeRole || 'Admin')}
                   </span>
-                  <button onClick={handleLogout} className="text-[10px] text-red-400/60 font-black hover:text-red-400 transition-colors uppercase tracking-tight font-sans">
-                    Cerrar Sesión
+                  <button onClick={handleLogout} className="text-[9px] text-slate-500 font-black hover:text-red-400 transition-colors uppercase tracking-widest">
+                    Salir
                   </button>
                 </div>
               </div>

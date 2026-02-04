@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ValuationRequest, ClaimsStage, Employee } from '../types';
 import { getValuationsFromSupabase, updateValuationStage, deleteValuation, updateValuationExpert } from '../services/supabaseClient';
-import { getBitrixUsers, BitrixUser } from '../services/bitrixService';
+import { getBitrixUsers, getBitrixContacts, BitrixUser } from '../services/bitrixService';
 
 // Ciclo de vida distinto para Siniestros (Administrativo/Pericial)
 const COLUMNS: { id: ClaimsStage; title: string; color: string }[] = [
@@ -31,18 +31,30 @@ const ClaimsPlanner: React.FC = () => {
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
-            const data = await getValuationsFromSupabase();
+            try {
+                const [valData, bUsers, bContacts] = await Promise.all([
+                    getValuationsFromSupabase(),
+                    getBitrixUsers(),
+                    getBitrixContacts()
+                ]);
 
-            // Obtener usuarios de Bitrix para resolver nombres
-            const bUsers = await getBitrixUsers();
-            setBitrixUsers(bUsers);
+                // Map contacts to have contact_ prefix to match DB storage format
+                const mappedContacts = bContacts.map((c: any) => ({
+                    ID: `contact_${c.ID}`,
+                    NAME: c.NAME,
+                    LAST_NAME: c.LAST_NAME,
+                    WORK_POSITION: c.WORK_POSITION || 'Contacto Externo',
+                    ACTIVE: true,
+                    IS_CONTACT: true
+                } as BitrixUser));
 
-            if (data && data.length > 0) {
-                setClaims(data);
-            } else {
-                setClaims([]);
+                setBitrixUsers([...bUsers, ...mappedContacts]);
+                setClaims(valData || []);
+            } catch (error) {
+                console.error("Error fetching planner data:", error);
+            } finally {
+                setIsLoading(false);
             }
-            setIsLoading(false);
         };
 
         fetchData();
@@ -194,7 +206,14 @@ const ClaimsPlanner: React.FC = () => {
                                                 key={claim.id}
                                                 draggable
                                                 onDragStart={(e) => handleDragStart(e, claim.id)}
-                                                onClick={() => navigate('/valuations', { state: { selectedId: claim.id } })}
+                                                onClick={() => {
+                                                    // Only navigate if an expert is assigned, otherwise prompt for assignment
+                                                    if (!claim.assignedExpertId) {
+                                                        alert("Por favor, asigna un perito antes de entrar al chat.");
+                                                    } else {
+                                                        navigate('/valuations', { state: { selectedId: claim.id } });
+                                                    }
+                                                }}
                                                 className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 cursor-grab active:cursor-grabbing hover:shadow-md transition-all group relative border-l-4 border-l-transparent hover:border-l-brand-500"
                                             >
                                                 {/* Botón Eliminar */}

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { supabase, saveUserPins, verifyPinAndGetRole, saveClientToSupabase, checkIsWorkshopAuthEmail, addToWorkshopAuth } from '../services/supabaseClient';
+import { supabase, saveUserPins, verifyPinAndGetRole, saveClientToSupabase, checkIsWorkshopAuthEmail, addToWorkshopAuth, saveCompanyProfileToSupabase, saveWorkshopAsClient } from '../services/supabaseClient';
 import { AppRole, Client, ClientType, PaymentMethod, PaymentTerms, ContactChannel, TariffType } from '../types';
 
 interface AuthProps {
@@ -133,6 +133,27 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
 
       try {
         await addToWorkshopAuth(email);
+
+        // Ensure the workshop is also in the Master 'clients' list for Admin visibility
+        await saveWorkshopAsClient({
+          id: data.user.id,
+          name: workshopName,
+          email: email,
+          isCompany: true,
+          clientType: 'Company',
+          taxId: '', address: '', city: '', zip: '', province: '', phone: '',
+          preferredChannel: 'WhatsApp', paymentMethod: 'Cash', tariff: 'General',
+          allowCommercialComms: true, country: 'Spain'
+        } as Client);
+
+        // Initialize empty profile
+        await saveCompanyProfileToSupabase({
+          companyName: workshopName,
+          email: email,
+          cif: '', address: '', city: '', zipCode: '', province: '', phone: '',
+          costeHora: 0, pvpManoObra: 0
+        });
+
         setAuthenticatedUserId(data.user.id);
         onAuthSuccess('Admin');
       } catch (err: any) {
@@ -168,22 +189,37 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
         contactPerson: clientData.isCompany ? contactPerson : undefined
       };
 
-      // 3. Save to Database
-      const success = await saveClientToSupabase(finalClient);
+      // 3. Save as a Workshop 'Client' (for the Admin Master list) - NOT in workshop_customers
+      const success = await saveWorkshopAsClient(finalClient);
+
+      // 4. Initialize Workshop Profile (Automatically populate with registration data for My Workshop area)
+      await saveCompanyProfileToSupabase({
+        companyName: finalClient.name,
+        cif: finalClient.taxId,
+        address: finalClient.address,
+        city: finalClient.city,
+        zipCode: finalClient.zip,
+        province: finalClient.province,
+        email: finalClient.email,
+        phone: finalClient.phone,
+        costeHora: 0,
+        pvpManoObra: 0
+      });
+
       if (success) {
-        setSuccessMsg("¡Perfil de cliente creado correctamente!");
+        setSuccessMsg("Client profile created successfully!");
         // If they are logged in immediately (no email confirm required in this config)
         if (authData.session) {
           setTimeout(() => onAuthSuccess('Client'), 1500);
         } else {
-          setError("Cuenta creada. Por favor, revise su email para confirmar y luego inicie sesión.");
+          setError("Account created. Please check your email to confirm and then log in.");
           setLoading(false);
         }
       } else {
-        setError("Error al crear el perfil de cliente en la base de datos.");
+        setError("Error creating the client profile in the database.");
       }
     } catch (err: any) {
-      setError(err.message || "Error al guardar los datos del cliente");
+      setError(err.message || "Error saving the client data");
     } finally {
       setLoading(false);
     }
@@ -213,13 +249,13 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
         <div className="text-center mb-6 md:mb-10">
           <div className={`w-14 h-14 ${view.includes('client') ? 'bg-emerald-500' : 'bg-brand-600'} rounded-2xl flex items-center justify-center text-white font-black shadow-lg mx-auto mb-6 text-2xl`}>V+</div>
           <h2 className="text-3xl font-black text-slate-900">
-            {view === 'login' ? 'Admin' :
-              view === 'signup' ? 'Crear Cuenta de Taller' :
-                view === 'client_login' ? 'Acceso a Mi Taller' :
-                  view === 'client_signup' ? 'Registro de Taller' :
-                    'Recuperar acceso'}
+            {view === 'login' ? 'Admin Access' :
+              view === 'signup' ? 'Create Workshop Account' :
+                view === 'client_login' ? 'My Workshop Login' :
+                  view === 'client_signup' ? 'Workshop Registration' :
+                    'Reset Password'}
           </h2>
-          {view === 'client_signup' && <p className="text-slate-500 mt-2">Complete todos los campos obligatorios.</p>}
+          {view === 'client_signup' && <p className="text-slate-500 mt-2">Complete all required fields.</p>}
         </div>
 
         {error && (
@@ -268,215 +304,82 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
               className="w-full bg-emerald-500 text-white font-black py-4 rounded-xl shadow-lg hover:bg-emerald-600 transition-all flex items-center justify-center gap-2"
             >
               {loading ? <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : null}
-              ENTRAR A MI TALLER
+              ACCESS TO MY WORKSHOP
             </button>
           </form>
         )}
 
         {view === 'client_signup' && (
-          <form onSubmit={handleClientSignup} className="space-y-8 animate-fade-in">
-            {/* Type Toggle */}
-            <div className="flex justify-center mb-8">
-              <div className="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setClientData({ ...clientData, isCompany: false, clientType: 'Individual' })}
-                  className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${!clientData.isCompany ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  Particular
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setClientData({ ...clientData, isCompany: true, clientType: 'Company' })}
-                  className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${clientData.isCompany ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  Empresa / Flota
-                </button>
-              </div>
-            </div>
+          <form onSubmit={handleClientSignup} className="space-y-6 animate-fade-in">
 
-            {/* Section 1: Identification */}
             <div className="space-y-4">
-              <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest border-b pb-2">1. Identificación y Datos Fiscales</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tipo de Cuenta</label>
-                  <select
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    value={clientData.clientType}
-                    onChange={e => setClientData({ ...clientData, clientType: e.target.value as any })}
-                  >
-                    {!clientData.isCompany ? (
-                      <option value="Individual">Particular</option>
-                    ) : (
-                      <>
-                        <option value="Company">Empresa</option>
-                        <option value="Fleet">Flota</option>
-                        <option value="Renting">Renting</option>
-                        <option value="Insurance">Aseguradora</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-                <div className="md:col-span-1">
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{clientData.isCompany ? 'Razón Social *' : 'Nombre del Taller *'}</label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    placeholder="Obligatorio"
-                    value={clientData.name}
-                    onChange={e => setClientData({ ...clientData, name: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{clientData.isCompany ? 'CIF' : 'DNI / NIF'}</label>
-                  <input
-                    type="text"
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none uppercase"
-                    value={clientData.taxId}
-                    onChange={e => setClientData({ ...clientData, taxId: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Section 2: Postal Address */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest border-b pb-2">2. Dirección Postal</h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div className="md:col-span-4">
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dirección Completa</label>
-                  <input
-                    type="text"
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    value={clientData.address}
-                    onChange={e => setClientData({ ...clientData, address: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ciudad</label>
-                  <input type="text" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={clientData.city} onChange={e => setClientData({ ...clientData, city: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">C.P.</label>
-                  <input type="text" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={clientData.zip} onChange={e => setClientData({ ...clientData, zip: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Provincia</label>
-                  <input type="text" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={clientData.province} onChange={e => setClientData({ ...clientData, province: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">País</label>
-                  <input type="text" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value="España" readOnly />
-                </div>
-              </div>
-            </div>
-
-            {/* Section 3: Contact & Security */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest border-b pb-2">3. Contacto y Seguridad del Portal</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email (ID de Acceso)</label>
-                  <input type="email" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={clientData.email} onChange={e => setClientData({ ...clientData, email: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Contraseña *</label>
-                  <input type="password" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Teléfono Principal</label>
-                  <input type="tel" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={clientData.phone} onChange={e => setClientData({ ...clientData, phone: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Canal Preferido</label>
-                  <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={clientData.preferredChannel} onChange={e => setClientData({ ...clientData, preferredChannel: e.target.value as any })}>
-                    <option value="WhatsApp">WhatsApp</option>
-                    <option value="Phone">Teléfono</option>
-                    <option value="Email">Email</option>
-                    <option value="SMS">SMS</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Section 4: Contact Person (Company only) */}
-            {clientData.isCompany && (
-              <div className="space-y-4">
-                <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest border-b pb-2">4. Persona de Contacto (Empresa)</h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre</label>
-                    <input type="text" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={contactPerson.name} onChange={e => setContactPerson({ ...contactPerson, name: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cargo</label>
-                    <input type="text" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={contactPerson.role} onChange={e => setContactPerson({ ...contactPerson, role: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Teléfono Directo</label>
-                    <input type="tel" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={contactPerson.directPhone} onChange={e => setContactPerson({ ...contactPerson, directPhone: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email Directo</label>
-                    <input type="email" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={contactPerson.directEmail} onChange={e => setContactPerson({ ...contactPerson, directEmail: e.target.value })} />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Section 5: Commercial & Billing */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest border-b pb-2">5. Comercial y Facturación</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Método de Pago</label>
-                  <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={clientData.paymentMethod} onChange={e => setClientData({ ...clientData, paymentMethod: e.target.value as any })}>
-                    <option value="Cash">Contado</option>
-                    <option value="POS">Tarjeta / TPV</option>
-                    <option value="Transfer">Transferencia</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tarifa</label>
-                  <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={clientData.tariff} onChange={e => setClientData({ ...clientData, tariff: e.target.value as any })}>
-                    <option value="General">General</option>
-                    <option value="Preferred">Preferente / VIP</option>
-                  </select>
-                </div>
-                {clientData.isCompany && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Condiciones de Pago</label>
-                    <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={clientData.paymentTerms} onChange={e => setClientData({ ...clientData, paymentTerms: e.target.value as any })}>
-                      <option value="Cash">Contado/Inmediato</option>
-                      <option value="30 Days">30 Días</option>
-                      <option value="60 Days">60 Días</option>
-                      <option value="90 Days">90 Días</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <label className="flex items-center gap-3 cursor-pointer group">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 ml-1">Company Name</label>
                 <input
-                  type="checkbox"
-                  className="w-5 h-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                  checked={clientData.allowCommercialComms}
-                  onChange={e => setClientData({ ...clientData, allowCommercialComms: e.target.checked })}
+                  type="text"
+                  required
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                  placeholder="Workshop / Company Name"
+                  value={clientData.name}
+                  onChange={e => setClientData({ ...clientData, name: e.target.value, isCompany: true, clientType: 'Company' })}
                 />
-                <span className="text-sm text-slate-600 group-hover:text-slate-800 transition-colors">Autorizo el envío de comunicaciones comerciales y recordatorios (RGPD)</span>
-              </label>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 ml-1">CIF / NIF</label>
+                <input
+                  type="text"
+                  required
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none uppercase"
+                  placeholder="G-12345678"
+                  value={clientData.taxId}
+                  onChange={e => setClientData({ ...clientData, taxId: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 ml-1">Fiscal Directorate</label>
+                <input
+                  type="text"
+                  required
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                  placeholder="Full Fiscal Address"
+                  value={clientData.address}
+                  onChange={e => setClientData({ ...clientData, address: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 ml-1">Email (Access)</label>
+                <input
+                  type="email"
+                  required
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                  placeholder="workshop@example.com"
+                  value={clientData.email}
+                  onChange={e => setClientData({ ...clientData, email: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 ml-1">Password</label>
+                <input
+                  type="password"
+                  required
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                />
+              </div>
             </div>
 
             <button
               disabled={loading || !clientData.name || !password || !clientData.email}
-              className="w-full bg-emerald-500 text-white font-black py-5 rounded-2xl shadow-xl hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 mt-8 text-xl"
+              className="w-full bg-emerald-500 text-white font-black py-4 rounded-xl shadow-xl hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 mt-8 text-lg"
             >
               {loading ? <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : null}
-              CREAR CUENTA DE TALLER
+              REGISTER WORKSHOP
             </button>
           </form>
         )}

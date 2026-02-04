@@ -112,21 +112,21 @@ const ClientArea: React.FC = () => {
             {activeTab === 'profile' && (
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 animate-fade-in">
                     <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-semibold text-slate-900">Información de la Empresa</h2>
-                        <button onClick={handleSaveCompany} className="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-brand-700">Guardar Cambios</button>
+                        <h2 className="text-lg font-semibold text-slate-900">Company Information</h2>
+                        <button onClick={handleSaveCompany} className="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-brand-700 uppercase tracking-wider">Save Changes</button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Razón Social</label>
-                            <input type="text" value={company.companyName} onChange={e => setCompany({ ...company, companyName: e.target.value })} className="w-full rounded border-slate-300 p-2" />
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">COMPANY NAME</label>
+                            <input type="text" value={company.companyName} onChange={e => setCompany({ ...company, companyName: e.target.value })} className="w-full rounded border-slate-300 p-2 text-slate-700 font-medium" />
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">CIF / NIF</label>
-                            <input type="text" value={company.cif} onChange={e => setCompany({ ...company, cif: e.target.value })} className="w-full rounded border-slate-300 p-2" />
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">CIF / NIF</label>
+                            <input type="text" value={company.cif} onChange={e => setCompany({ ...company, cif: e.target.value })} className="w-full rounded border-slate-300 p-2 text-slate-700 font-medium" />
                         </div>
                         <div className="col-span-2">
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dirección Fiscal</label>
-                            <input type="text" value={company.address} onChange={e => setCompany({ ...company, address: e.target.value })} className="w-full rounded border-slate-300 p-2" />
+                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">FISCAL DIRECTORATE</label>
+                            <input type="text" value={company.address} onChange={e => setCompany({ ...company, address: e.target.value })} className="w-full rounded border-slate-300 p-2 text-slate-700 font-medium" />
                         </div>
                     </div>
                 </div>
