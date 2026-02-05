@@ -201,12 +201,12 @@ const ClientArea: React.FC = () => {
                                             <p className="text-[10px] text-brand-600 font-bold uppercase tracking-wider">{person.role}</p>
                                         </div>
                                     </div>
-                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => { setIsAddingStaff(true); setNewStaff(person); }} className="p-1.5 text-slate-400 hover:text-brand-600 transition-colors" title="Editar">
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                    <div className="flex gap-1">
+                                        <button onClick={() => { setIsAddingStaff(true); setNewStaff(person); }} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all" title="Editar">
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                                         </button>
-                                        <button onClick={() => handleDeleteStaff(person.id)} className="p-1.5 text-slate-400 hover:text-red-600 transition-colors" title="Eliminar">
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
+                                        <button onClick={() => handleDeleteStaff(person.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Eliminar">
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                         </button>
                                     </div>
                                 </div>

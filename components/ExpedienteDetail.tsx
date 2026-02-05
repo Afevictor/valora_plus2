@@ -11,9 +11,11 @@ import {
     getLaborLogsForOrder,
     getVehicle,
     getFilesForExpediente,
+    getValuationById, // Added this
     updateWorkOrderStatus,
     supabase
 } from '../services/supabaseClient';
+import { ValuationRequest } from '../types'; // Added this
 import DualChat from './DualChat';
 
 const REPAIR_PHASES = [
@@ -45,6 +47,7 @@ const ExpedienteDetail: React.FC = () => {
     const [workshopRate, setWorkshopRate] = useState<number>(0);
     const [laborLogs, setLaborLogs] = useState<any[]>([]);
     const [files, setFiles] = useState<any[]>([]);
+    const [valuation, setValuation] = useState<ValuationRequest | null>(null); // Added this
     const [isLoadingMain, setIsLoadingMain] = useState(true);
     const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
 
@@ -89,6 +92,11 @@ const ExpedienteDetail: React.FC = () => {
 
                 if (foundJob.clientId) {
                     setClient(cDataList.find(c => c.id === foundJob.clientId) || null);
+                }
+
+                if (foundJob.valuationId) {
+                    const valData = await getValuationById(foundJob.valuationId);
+                    setValuation(valData);
                 }
 
                 console.log(`[FILES DEBUG] Processed ${fData.length} files for job ${foundJob.id}`);
@@ -465,50 +473,170 @@ const ExpedienteDetail: React.FC = () => {
                     <div className="flex-1 p-8 md:p-12 animate-fade-in grid grid-cols-1 md:grid-cols-2 gap-12">
                         <div className="space-y-8">
                             <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-2">Identificación del Cliente</h3>
-                            {client ? (
-                                <div className="grid grid-cols-2 gap-y-6 gap-x-4">
-                                    <div className="col-span-2 bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                                        <p className="text-[10px] font-black text-brand-600 uppercase mb-1">Nombre Completo / Entidad</p>
-                                        <p className="text-xl font-black text-slate-800">{client.name}</p>
-                                        <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-tighter">CIF/DNI: {client.taxId || 'N/D'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Tipo de Cliente</p>
-                                        <p className="font-bold text-slate-700">{client.clientType}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Teléfono</p>
-                                        <p className="font-bold text-slate-700">{client.phone}</p>
-                                    </div>
-                                    <div className="col-span-2">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Correo Electrónico</p>
-                                        <p className="font-bold text-slate-700">{client.email}</p>
-                                    </div>
+                            <div className="grid grid-cols-2 gap-y-6 gap-x-4">
+                                <div className="col-span-2 bg-slate-900 p-8 rounded-[32px] text-white shadow-xl">
+                                    <p className="text-[10px] font-black text-brand-400 uppercase tracking-widest mb-2">Nombre Completo / Entidad</p>
+                                    <p className="text-3xl font-black tracking-tight">{client?.name || job.insuredName}</p>
+                                    <p className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest border-t border-white/10 pt-2 inline-block">
+                                        Identificación: {client?.taxId || 'N/D'}
+                                    </p>
                                 </div>
-                            ) : (
-                                <div className="bg-slate-50 p-12 rounded-3xl text-center text-slate-400 font-bold border-2 border-dashed border-slate-200">
-                                    Perfil de cliente no vinculado.
+                                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Tipo de Cliente</p>
+                                    <p className="font-bold text-slate-700">{client?.clientType || 'Standard'}</p>
                                 </div>
-                            )}
+                                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Teléfono</p>
+                                    <p className="font-bold text-slate-700">{client?.phone || 'No registrado'}</p>
+                                </div>
+                                <div className="col-span-2 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Correo Electrónico</p>
+                                    <p className="font-bold text-slate-700">{client?.email || 'No registrado'}</p>
+                                </div>
+                                {client?.address && (
+                                    <div className="col-span-2 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Dirección Fiscal / Ubicación</p>
+                                        <p className="font-bold text-slate-700">{client.address}, {client.city} ({client.province})</p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <div className="space-y-8">
                             <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-2">Perfil Técnico del Vehículo</h3>
-                            {vehicle ? (
-                                <div className="grid grid-cols-2 gap-y-6 gap-x-4">
-                                    <div className="col-span-2 bg-slate-50 p-6 rounded-3xl border border-slate-100 flex justify-between items-end">
-                                        <div>
-                                            <p className="text-[10px] font-black text-brand-600 uppercase mb-1">Especificaciones</p>
-                                            <p className="text-xl font-black text-slate-800">{vehicle.brand} {vehicle.model}</p>
-                                        </div>
-                                        <div className="bg-white px-3 py-1 rounded-lg border border-slate-200 font-mono font-black text-lg text-slate-900 shadow-sm">{vehicle.plate}</div>
+                            <div className="grid grid-cols-2 gap-y-6 gap-x-4">
+                                <div className="col-span-2 bg-emerald-50/50 p-6 rounded-3xl border border-emerald-100 flex justify-between items-end">
+                                    <div>
+                                        <p className="text-[10px] font-black text-emerald-600 uppercase mb-1">Especificaciones (Marca/Modelo)</p>
+                                        <p className="text-2xl font-black text-slate-800">
+                                            {vehicle ? `${vehicle.brand} ${vehicle.model}` : job.vehicle}
+                                        </p>
+                                    </div>
+                                    <div className="bg-white px-4 py-2 rounded-xl border-2 border-slate-900 font-mono font-black text-xl text-slate-900 shadow-sm">
+                                        {vehicle?.plate || job.plate}
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="bg-slate-50 p-12 rounded-3xl text-center text-slate-400 font-bold border-2 border-dashed border-slate-200">
-                                    Datos detallados del vehículo no completados.
+
+                                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Kilometraje Actual</p>
+                                    <p className="text-lg font-black text-slate-700">{vehicle?.currentKm || job.currentKm || '---'} KM</p>
                                 </div>
-                            )}
+
+                                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Nº Bastidor (VIN)</p>
+                                    <p className="text-sm font-black text-slate-700 font-mono uppercase truncate">{vehicle?.vin || job.vin || 'NO REGISTRADO'}</p>
+                                </div>
+
+                                {vehicle && (
+                                    <>
+                                        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Combustible</p>
+                                            <p className="text-sm font-bold text-slate-700">{vehicle.fuel || '---'}</p>
+                                        </div>
+                                        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Color</p>
+                                            <p className="text-sm font-bold text-slate-700">{vehicle.color || '---'}</p>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* SECCIÓN 3: INFORMACIÓN DE PERITACIÓN Y SEGURO (NEW) */}
+                        {(job.requestAppraisal || valuation) && (
+                            <div className="md:col-span-2 space-y-8 mt-4">
+                                <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-2">Gestión de Peritación y Seguro</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    <div className="bg-purple-50 p-6 rounded-3xl border border-purple-100">
+                                        <p className="text-[10px] font-black text-purple-600 uppercase mb-2">Compañía Aseguradora</p>
+                                        <p className="text-lg font-black text-slate-800">
+                                            {valuation?.insuranceCompany || job.insurance?.company || 'No especificada'}
+                                        </p>
+                                    </div>
+                                    <div className="bg-purple-50 p-6 rounded-3xl border border-purple-100">
+                                        <p className="text-[10px] font-black text-purple-600 uppercase mb-2">Tipo de Siniestro</p>
+                                        <p className="text-lg font-black text-slate-800">
+                                            {valuation?.claimType || 'Por determinar'}
+                                        </p>
+                                    </div>
+                                    <div className="bg-purple-50 p-6 rounded-3xl border border-purple-100">
+                                        <p className="text-[10px] font-black text-purple-600 uppercase mb-2">Estado Siniestro</p>
+                                        <span className="px-3 py-1 bg-white border-2 border-purple-500 text-purple-600 rounded-lg text-[10px] font-black uppercase">
+                                            {valuation?.claimsStage?.replace('_', ' ') || 'Pendiente'}
+                                        </span>
+                                    </div>
+                                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Franquicia</p>
+                                        <p className="text-sm font-bold text-slate-700">
+                                            {valuation?.franchise?.applies
+                                                ? `SÍ (${valuation.franchise.amount} €)`
+                                                : job.insurance?.franchise
+                                                    ? `SÍ (${job.insurance.franchise} €)`
+                                                    : 'SIN FRANQUICIA'}
+                                        </p>
+                                    </div>
+                                    {valuation?.opposingVehicle?.exists && (
+                                        <div className="bg-red-50 p-6 rounded-3xl border border-red-100">
+                                            <p className="text-[10px] font-black text-red-600 uppercase mb-2">Vehículo Contrario</p>
+                                            <p className="text-sm font-bold text-slate-700 uppercase">
+                                                {valuation.opposingVehicle.plate} - {valuation.opposingVehicle.model}
+                                            </p>
+                                        </div>
+                                    )}
+                                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Referencia de Coste Aplicada</p>
+                                        <p className="text-sm font-bold text-slate-700">
+                                            {valuation?.costReference || 'General Taller'}
+                                        </p>
+                                    </div>
+                                </div>
+                                {valuation?.notes && (
+                                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-inner">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase mb-3">Notas Internas de Peritación</p>
+                                        <p className="text-slate-600 font-medium italic leading-relaxed">
+                                            {valuation.notes}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* SECCIÓN 4: DETALLES DE REPARACIÓN (FULL WIDTH BELOW) */}
+                        <div className="md:col-span-2 space-y-8 mt-4">
+                            <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-2">Detalles de la Orden y Reparación</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Tipos de Trabajo</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(job.repairType || ['Mecánica']).map((type: string) => (
+                                            <span key={type} className="bg-white border border-slate-200 px-3 py-1 rounded-full text-xs font-bold text-slate-700">
+                                                {type}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 text-center">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Prioridad</p>
+                                    <span className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest ${job.priority === 'High' ? 'bg-red-100 text-red-600' :
+                                        job.priority === 'Medium' ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-600'
+                                        }`}>
+                                        {job.priority || 'Medium'}
+                                    </span>
+                                </div>
+                                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 text-center">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Peritación Solicitada</p>
+                                    <span className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest ${job.requestAppraisal || valuation ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-600'
+                                        }`}>
+                                        {job.requestAppraisal || valuation ? 'SÍ' : 'NO'}
+                                    </span>
+                                </div>
+                                <div className="md:col-span-3 bg-white p-6 rounded-3xl border border-slate-100 shadow-inner">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-3">Observaciones / Daños Declarados</p>
+                                    <p className="text-slate-700 font-medium italic leading-relaxed">
+                                        {job.description || 'Sin observaciones detalladas.'}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}

@@ -15,20 +15,8 @@ import {
 } from '../services/supabaseClient';
 import WorkshopCustomerForm from './WorkshopCustomerForm';
 
-// Categorías con mapeos de buckets (sin cambios)
-const FILE_CATEGORIES = [
-    { id: 'Daño Frontal', bucket: 'reception-files' },
-    { id: 'Daño Trasero', bucket: 'reception-files' },
-    { id: 'Daño Izquierdo', bucket: 'reception-files' },
-    { id: 'Daño Derecho', bucket: 'reception-files' },
-    { id: 'Bastidor (VIN)', bucket: 'reception-files' },
-    { id: 'Kilometraje', bucket: 'reception-files' },
-    { id: 'Video General', bucket: 'reception-files' },
-    { id: 'Ficha Técnica', bucket: 'reception-files' },
-    { id: 'Póliza Seguro', bucket: 'reception-files' },
-    { id: 'Factura', bucket: 'reception-files' },
-    { id: 'Otros', bucket: 'reception-files' }
-];
+// Bucket default
+const DEFAULT_BUCKET = 'reception-files';
 
 interface StagedFile {
     id: string;
@@ -144,7 +132,7 @@ const NewAppraisal: React.FC = () => {
                 id: Math.random().toString(36).substring(7),
                 file,
                 preview: URL.createObjectURL(file),
-                category: '',
+                category: 'General',
                 bucket,
                 type
             };
@@ -152,14 +140,6 @@ const NewAppraisal: React.FC = () => {
         setStagedFiles(prev => [...prev, ...newStaged]);
     };
 
-    const updateFileCategory = (id: string, category: string) => {
-        const catObj = FILE_CATEGORIES.find(c => c.id === category);
-        setStagedFiles(prev => prev.map(f => f.id === id ? {
-            ...f,
-            category,
-            bucket: catObj?.bucket || f.bucket
-        } : f));
-    };
 
     const removeStagedFile = (id: string) => {
         setStagedFiles(prev => prev.filter(f => f.id !== id));
@@ -178,7 +158,7 @@ const NewAppraisal: React.FC = () => {
                 id: Math.random().toString(36).substring(7),
                 file,
                 preview: URL.createObjectURL(file),
-                category: isPdf ? 'Ficha Técnica' : 'Bastidor (VIN)',
+                category: 'General',
                 bucket: isImage ? 'evidence_photos' : 'documents',
                 type: isImage ? 'image' : isPdf ? 'pdf' : 'other'
             };
@@ -226,6 +206,7 @@ const NewAppraisal: React.FC = () => {
                 photos: [],
                 team: { technicianIds: [] },
                 plate: vehicleData.plate,
+                vin: vehicleData.vin,
                 vehicle: `${vehicleData.brand} ${vehicleData.model}`.trim() || 'Vehículo Desconocido',
                 currentKm: vehicleData.km,
                 insuredName: selectedCustomer.full_name,
@@ -299,7 +280,7 @@ const NewAppraisal: React.FC = () => {
         }
     };
 
-    const isStep2Valid = stagedFiles.length > 0 && stagedFiles.every(f => f.category !== '');
+    const isStep2Valid = stagedFiles.length > 0;
 
     return (
         <div className="max-w-5xl mx-auto p-4 md:p-6 min-h-[calc(100vh-2rem)]">
@@ -412,10 +393,6 @@ const NewAppraisal: React.FC = () => {
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-[10px] font-black text-slate-400 uppercase truncate mb-2">{staged.file.name}</p>
-                                                <select required className="w-full text-xs p-2 border rounded-lg" value={staged.category} onChange={(e) => updateFileCategory(staged.id, e.target.value)}>
-                                                    <option value="">Categoría *</option>
-                                                    {FILE_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
-                                                </select>
                                             </div>
                                             <button onClick={() => removeStagedFile(staged.id)} className="absolute -top-2 -right-2 bg-white text-slate-400 hover:text-red-500 w-7 h-7 rounded-full shadow-md border flex items-center justify-center">&times;</button>
                                         </div>
@@ -449,14 +426,18 @@ const NewAppraisal: React.FC = () => {
                                     <input type="text" className="w-full p-3 border rounded-xl font-mono font-black text-lg bg-slate-50 uppercase" value={vehicleData.plate} onChange={e => setVehicleData({ ...vehicleData, plate: e.target.value })} />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Kms</label>
-                                    <input type="number" className="w-full p-2 border rounded-lg" value={vehicleData.km || ''} onChange={e => setVehicleData({ ...vehicleData, km: parseInt(e.target.value) || 0 })} />
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Marca</label>
+                                    <input type="text" className="w-full p-2 border rounded-lg" value={vehicleData.brand} onChange={e => setVehicleData({ ...vehicleData, brand: e.target.value })} />
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Modelo</label>
                                     <input type="text" className="w-full p-2 border rounded-lg" value={vehicleData.model} onChange={e => setVehicleData({ ...vehicleData, model: e.target.value })} />
                                 </div>
-                                <div className="col-span-2">
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Kms</label>
+                                    <input type="number" className="w-full p-2 border rounded-lg" value={vehicleData.km || ''} onChange={e => setVehicleData({ ...vehicleData, km: parseInt(e.target.value) || 0 })} />
+                                </div>
+                                <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">VIN</label>
                                     <input type="text" className="w-full p-2 border rounded-lg font-mono uppercase" value={vehicleData.vin} onChange={e => setVehicleData({ ...vehicleData, vin: e.target.value })} />
                                 </div>

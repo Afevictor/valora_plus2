@@ -625,6 +625,11 @@ export const saveVehicle = async (vehicle: Vehicle, explicitWorkshopId?: string)
         const { error } = await supabase.from('vehicles').upsert({
             id: vehicle.id,
             workshop_id: explicitWorkshopId || user.id,
+            owner_id: vehicle.clientId, // Mapping to table column
+            plate: vehicle.plate,
+            brand: vehicle.brand,
+            model: vehicle.model,
+            vin: vehicle.vin,
             raw_data: vehicle
         });
         if (error) throw error;

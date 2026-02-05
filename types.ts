@@ -106,7 +106,7 @@ export type BusinessLine = 'Mechanics' | 'Bodywork';
 
 export interface WorkOrderLine { id: string; type: 'Labor' | 'Part' | 'Material' | 'Subcontract'; description: string; quantity: number; unitPrice: number; discount: number; total: number; }
 export interface WorkOrderTeam { advisorId?: string; workshopChiefId?: string; adminId?: string; technicianIds: string[]; }
-export interface WorkOrder { id: string; receptionId?: string; clientId: string; vehicleId: string; status: OTStatus; repairType: RepairType[]; entryDate: string; description: string; priority: 'Low' | 'Medium' | 'High' | 'Urgent'; insurance?: { company: string; policyNumber: string; claimNumber: string; expertName?: string; franchise?: number; }; lines: WorkOrderLine[]; totalAmount: number; photos: string[]; team: WorkOrderTeam; requestAppraisal?: boolean; valuationId?: string; expedienteId?: string; vehicle?: string; plate?: string; currentKm?: number; insuredName?: string; }
+export interface WorkOrder { id: string; receptionId?: string; clientId: string; vehicleId: string; status: OTStatus; repairType: RepairType[]; entryDate: string; description: string; priority: 'Low' | 'Medium' | 'High' | 'Urgent'; insurance?: { company: string; policyNumber: string; claimNumber: string; expertName?: string; franchise?: number; }; lines: WorkOrderLine[]; totalAmount: number; photos: string[]; team: WorkOrderTeam; requestAppraisal?: boolean; valuationId?: string; expedienteId?: string; vehicle?: string; plate?: string; vin?: string; currentKm?: number; insuredName?: string; }
 export interface RepairJob {
   id: string;
   expedienteId: string;
@@ -133,6 +133,7 @@ export interface RepairJob {
   repairType?: RepairType[];
   currentKm?: number;
   vehicleId?: string;
+  vin?: string;
   requestAppraisal?: boolean;
 }
 export interface ChatMessage { id: string; role: 'user' | 'model'; text: string; timestamp?: string; }
