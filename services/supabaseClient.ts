@@ -608,7 +608,8 @@ export const getWorkOrder = async (id: string): Promise<RepairJob | null> => {
             currentKm: data.current_km || raw.currentKm,
             vin: raw.vin,
             totalAmount: data.total_amount || raw.totalAmount,
-            requestAppraisal: data.request_appraisal
+            requestAppraisal: data.request_appraisal,
+            workshopId: data.workshop_id
         } as RepairJob;
     } catch (e) {
         logError('getWorkOrder', e);

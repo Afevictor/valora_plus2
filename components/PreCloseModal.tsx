@@ -29,7 +29,7 @@ const PreCloseModal: React.FC<PreCloseModalProps> = ({ workOrderId, onClose, onC
             getWorkOrderParts(workOrderId),
             getWorkOrderBilling(workOrderId),
             getPurchaseLinesForWorkOrder(workOrderId),
-            getActiveHourCostCalculation(currentYear, wo.workshop_id)
+            getActiveHourCostCalculation(currentYear, wo.workshopId || '')
         ]);
 
         const workshopCostPerHour = rateData?.resultado_calculo?.hourlyCost || 25;

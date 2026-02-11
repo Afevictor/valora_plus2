@@ -204,6 +204,7 @@ export interface RepairJob {
   vehicleId?: string;
   vin?: string;
   requestAppraisal?: boolean;
+  workshopId?: string;
 }
 export interface ChatMessage { id: string; role: 'user' | 'model'; text: string; timestamp?: string; }
 export interface CalculatorStructureCosts { rent: number; office: number; maintenance: number; diesel: number; phone: number; electricity: number; water: number; waste: number; cleaning: number; training: number; courtesyCar: number; advertising: number; banking: number; loans: number; courtesyExtra: number; taxes: number; liabilityInsurance: number; carInsurance: number; machineryDepreciation: number; subcontracts: number; other: number; }
