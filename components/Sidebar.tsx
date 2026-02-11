@@ -69,6 +69,7 @@ const UserIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke=
 const ExpertIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg></IconWrapper>; // Modified User Group / Badge idea
 const QueueIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" ry="1" /><path d="M9 12h6" /><path d="M9 16h6" /></svg></IconWrapper>;
 const PurchaseIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" /></svg></IconWrapper>;
+const ZapIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg></IconWrapper>;
 
 const NotificationCenter = React.lazy(() => import('./NotificationCenter'));
 
@@ -147,9 +148,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
 
                 <SectionHeader label="Finanzas" />
                 <NavItem to="/calculator" icon={<CalculatorIcon />} label="Calculadora de Costes" active={location.pathname === '/calculator'} isClient={true} />
-                <NavItem to="/analytics" icon={<ChartIcon />} label="Análisis / Informes" active={location.pathname === '/analytics'} isClient={true} />
 
                 <SectionHeader label="Estrategia" />
+                <NavItem to="/client-analysis" icon={<ZapIcon />} label="Análisis de Rentabilidad" active={location.pathname === '/client-analysis'} isClient={true} />
                 <NavItem to="/crm" icon={<CrmIcon />} label="CRM / Estrategia" active={location.pathname === '/crm'} isClient={true} />
                 <NavItem to="/client-area" icon={<UserIcon />} label="Mi Taller (Perfil)" active={location.pathname === '/client-area'} isClient={true} />
               </>

@@ -4,7 +4,7 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import CostCalculator from './components/CostCalculator';
 import SmartReception from './components/NewAppraisal';
-import Analytics from './components/Analytics';
+
 import ChatBot from './components/ChatBot';
 import ClientArea from './components/ClientArea';
 import RepairKanban from './components/RepairKanban';
@@ -60,14 +60,14 @@ const App = () => {
       '/crm': 'CRM / Ventas',
       '/claims-planner': 'Gestor de Siniestros',
       '/history-claims': 'Historial Siniestros',
-      '/analytics': 'Análisis / Informes',
+
       '/calculator': 'Calculadora Costes',
       '/purchases': 'Importador de Compras',
       '/attendance': 'Control Horario',
       '/bitrix-config': 'Conexión Bitrix24',
       '/tutorials': 'Academia',
       '/client-area': 'Mi Taller',
-      '/client-analysis': 'Análisis'
+      '/client-analysis': 'Análisis de Rentabilidad'
     };
     return <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">{titles[location.pathname] || 'Panel de Control'}</h1>;
   };
@@ -262,11 +262,7 @@ const App = () => {
                     <OTHistory />
                   </ProtectedRoleRoute>
                 } />
-                <Route path="/analytics" element={
-                  <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
-                    <Analytics />
-                  </ProtectedRoleRoute>
-                } />
+
                 <Route path="/payment" element={
                   <ProtectedRoleRoute allowedRoles={['Client', 'Admin']} activeRole={activeRole as AppRole}>
                     <Subscription />
