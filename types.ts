@@ -100,13 +100,82 @@ export interface HourCostCalculation {
 }
 
 export type RepairType = 'Accident' | 'Maintenance' | 'MOT' | 'Mechanics' | 'Electricity' | 'Tyres' | 'BodyPaint' | 'Warranty' | 'Upsell' | 'Marketing';
-export type OTStatus = 'Open' | 'Diagnosis' | 'WaitingParts' | 'InRepair' | 'Finished' | 'Invoiced' | 'Closed' | 'reception' | 'disassembly' | 'bodywork' | 'paint' | 'admin_close' | 'finished';
-export type RepairStage = 'reception' | 'disassembly' | 'bodywork' | 'paint' | 'admin_close' | 'finished' | 'closed';
+
+export enum WorkOrderStatus {
+  INTAKE = 'intake',              // newly created
+  ASSIGNED = 'assigned',          // Assigned to operators
+  IN_PROGRESS = 'in_progress',    // In execution
+  ON_HOLD = 'on_hold',            // Paused
+  READY_TO_CLOSE = 'ready_to_close', // Ready to close
+  CLOSED = 'closed',              // Closed
+  CANCELLED = 'cancelled'         // Cancelled
+}
+
+export type OTStatus = 'intake' | 'assigned' | 'in_progress' | 'on_hold' | 'ready_to_close' | 'closed' | 'cancelled' | 'reception' | 'disassembly' | 'bodywork' | 'paint' | 'admin_close' | 'finished';
+export type RepairStage = OTStatus;
+
+export const ALLOWED_TRANSITIONS: Record<OTStatus, OTStatus[]> = {
+  'intake': ['assigned', 'cancelled', 'disassembly'],
+  'reception': ['disassembly', 'assigned', 'cancelled'],
+  'assigned': ['in_progress', 'on_hold', 'cancelled'],
+  'in_progress': ['on_hold', 'ready_to_close', 'disassembly', 'bodywork', 'paint'],
+  'on_hold': ['in_progress', 'cancelled'],
+  'ready_to_close': ['in_progress', 'closed'],
+  'closed': [],
+  'cancelled': [],
+  'disassembly': ['bodywork', 'paint', 'ready_to_close'],
+  'bodywork': ['paint', 'ready_to_close'],
+  'paint': ['ready_to_close', 'admin_close'],
+  'admin_close': ['closed'],
+  'finished': ['closed']
+};
+
 export type BusinessLine = 'Mechanics' | 'Bodywork';
 
 export interface WorkOrderLine { id: string; type: 'Labor' | 'Part' | 'Material' | 'Subcontract'; description: string; quantity: number; unitPrice: number; discount: number; total: number; }
 export interface WorkOrderTeam { advisorId?: string; workshopChiefId?: string; adminId?: string; technicianIds: string[]; }
-export interface WorkOrder { id: string; receptionId?: string; clientId: string; vehicleId: string; status: OTStatus; repairType: RepairType[]; entryDate: string; description: string; priority: 'Low' | 'Medium' | 'High' | 'Urgent'; insurance?: { company: string; policyNumber: string; claimNumber: string; expertName?: string; franchise?: number; }; lines: WorkOrderLine[]; totalAmount: number; photos: string[]; team: WorkOrderTeam; requestAppraisal?: boolean; valuationId?: string; expedienteId?: string; vehicle?: string; plate?: string; vin?: string; currentKm?: number; insuredName?: string; }
+export interface WorkOrder {
+  id: string;
+  receptionId?: string;
+  clientId: string;
+  vehicleId: string;
+  status: OTStatus;
+  repairType: RepairType[];
+  entryDate: string;
+  description: string;
+  priority: 'Low' | 'Medium' | 'High' | 'Urgent';
+  insurance?: {
+    company: string;
+    policyNumber: string;
+    claimNumber: string;
+    expertName?: string;
+    franchise?: number;
+  };
+  insurer_id?: string;
+  claim_number?: string;
+  incident_type?: string;
+  incident_date?: string;
+  lines: WorkOrderLine[];
+  totalAmount: number;
+  photos: string[];
+  team: WorkOrderTeam;
+  requestAppraisal?: boolean;
+  valuationId?: string;
+  expedienteId?: string;
+  vehicle?: string;
+  plate?: string;
+  vin?: string;
+  currentKm?: number;
+  insuredName?: string;
+}
+export interface Insurer {
+  id: string;
+  workshop_id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+}
+
 export interface RepairJob {
   id: string;
   expedienteId: string;
@@ -286,4 +355,113 @@ export interface Vehicle {
   transmission: string;
   color: string;
   created_at?: string;
+}
+
+export interface Supplier {
+  id: string;
+  workshop_id: string;
+  name: string;
+  tax_id?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+}
+
+export interface PurchaseDocument {
+  id: string;
+  workshop_id: string;
+  supplier_id?: string;
+  document_number?: string;
+  document_date: string;
+  document_type: 'invoice' | 'delivery_note';
+  total_amount: number;
+  status: 'imported' | 'matched' | 'pending_review';
+  file_id?: string;
+  created_at?: string;
+}
+
+export interface PurchaseLine {
+  id: string;
+  workshop_id: string;
+  purchase_document_id: string;
+  sku?: string;
+  description?: string;
+  quantity: number;
+  unit_price: number;
+  total_amount: number;
+  work_order_id?: string;
+  work_order_part_id?: string;
+  matching_status: 'pending' | 'matched' | 'no_match';
+}
+
+export interface WorkOrderStateTransition {
+  id: string;
+  workshop_id: string;
+  work_order_id: string;
+  from_state: string;
+  to_state: string;
+  transitioned_by: string;
+  transitioned_at: string;
+  reason?: string;
+  metadata?: any;
+}
+
+export interface EmployeeAttendance {
+  id: string;
+  employee_id: string;
+  workshop_id: string;
+  clock_in: string;
+  clock_out?: string;
+  day_type: 'work' | 'vacation' | 'sick_leave' | 'personal_leave' | 'holiday';
+  total_hours?: number;
+  extra_hours: number;
+  notes?: string;
+  is_locked: boolean;
+  attendance_breaks?: AttendanceBreak[];
+}
+
+export interface AttendanceBreak {
+  id: string;
+  attendance_id: string;
+  break_start: string;
+  break_end?: string;
+  break_type: 'meal' | 'rest' | 'personal';
+  duration_minutes?: number;
+}
+
+export interface EmployeeAbsence {
+  id: string;
+  employee_id: string;
+  workshop_id: string;
+  absence_type: 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity_leave' | 'paternity_leave' | 'unpaid_leave';
+  start_date: string;
+  end_date: string;
+  status: 'pending' | 'approved' | 'rejected';
+  approved_by?: string;
+  notes?: string;
+}
+
+export interface WorkOrderTask {
+  id: string;
+  workshop_id: string;
+  work_order_id: string;
+  name: string;
+  description?: string;
+  category: 'mechanics' | 'electricity' | 'bodywork' | 'paint' | 'cleaning' | 'other';
+  status: 'pending' | 'in_progress' | 'on_hold' | 'finished' | 'cancelled';
+  estimated_hours?: number;
+  actual_hours: number;
+  created_at: string;
+}
+
+export interface TaskTimeLog {
+  id: string;
+  workshop_id: string;
+  task_id: string;
+  employee_id: string;
+  started_at: string;
+  ended_at?: string;
+  duration_seconds?: number;
+  status: 'in_progress' | 'paused' | 'completed';
+  sync_id?: string;
 }

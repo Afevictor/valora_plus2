@@ -16,6 +16,7 @@ import {
     supabase
 } from '../services/supabaseClient';
 import { analyzeProfitabilityDocument } from '../services/geminiService';
+import AssessmentImporter from './AssessmentImporter';
 
 const COLORS = ['#3676b2', '#10b981', '#a855f7', '#f97316'];
 
@@ -250,27 +251,13 @@ const Analytics: React.FC = () => {
     return (
         <div className="p-4 md:p-6 max-w-7xl mx-auto animate-fade-in pb-20 bg-slate-50/30">
 
-            {/* Fila de Selector y Acciones */}
+            {/* Header Section */}
             <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4 px-2">
                 <div>
                     <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Centro de Auditoría</h1>
                     <p className="text-slate-500 font-medium">Análisis detallado de rentabilidad para expedientes finalizados.</p>
                 </div>
                 <div className="flex gap-3 w-full md:w-auto">
-                    <div className="relative flex-1 md:w-80">
-                        <select
-                            className="w-full pl-4 pr-10 py-3 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-brand-500 text-sm font-black text-slate-700 shadow-sm transition-all outline-none"
-                            value={selectedJobId}
-                            onChange={(e) => handleAnalyzeJob(e.target.value)}
-                            disabled={isLoadingJobs}
-                        >
-                            <option value="">{isLoadingJobs ? 'Sincronizando...' : '-- Seleccionar Expediente Finalizado --'}</option>
-                            {finishedJobs.map(j => (
-                                <option key={j.id} value={j.id}>{j.expedienteId} • {j.plate} ({j.insuredName})</option>
-                            ))}
-                        </select>
-                    </div>
-
                     {!subscriptionStatus.isPremium && (
                         <button
                             onClick={() => navigate('/payment')}
@@ -294,6 +281,127 @@ const Analytics: React.FC = () => {
                     </button>
                 </div>
             </div>
+
+            {/* AI Extraction Engine Section - Always Visible */}
+            <div className="mb-8">
+                <AssessmentImporter
+                    workOrderId={selectedJobId || 'standalone'}
+                    expedienteId={selectedJob?.expedienteId}
+                    onUploadComplete={() => {
+                        // Refresh the analysis after upload if a job is selected
+                        if (selectedJobId) {
+                            handleAnalyzeJob(selectedJobId);
+                        }
+                    }}
+                />
+            </div>
+
+            {/* Job Selector */}
+            <div className="mb-8">
+                <div className="relative">
+                    <select
+                        className="w-full pl-4 pr-10 py-3 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-brand-500 text-sm font-black text-slate-700 shadow-sm transition-all outline-none"
+                        value={selectedJobId}
+                        onChange={(e) => handleAnalyzeJob(e.target.value)}
+                        disabled={isLoadingJobs}
+                    >
+                        <option value="">{isLoadingJobs ? 'Sincronizando...' : '-- Seleccionar Expediente Finalizado --'}</option>
+                        {finishedJobs.map(j => (
+                            <option key={j.id} value={j.id}>{j.expedienteId} • {j.plate} ({j.insuredName})</option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+
+            {/* Extracted Data Preview - Show what AI found */}
+            {smartData && smartData.financials && (
+                <div className="mb-8 bg-white rounded-3xl p-8 border border-slate-200 shadow-lg">
+                    <div className="flex items-center gap-4 mb-6">
+                        <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-black text-slate-800 tracking-tight">Datos Extraídos por IA</h3>
+                            <p className="text-sm font-medium text-slate-500">Información detectada en el informe de peritación</p>
+                        </div>
+                        {smartData.metadata?.confidence_score && (
+                            <div className="ml-auto text-right">
+                                <p className="text-xs font-bold text-slate-400 uppercase">Confianza</p>
+                                <p className="text-2xl font-black text-emerald-600">{smartData.metadata.confidence_score}%</p>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {/* Total Gross */}
+                        <div className="bg-gradient-to-br from-blue-50 to-white p-6 rounded-2xl border border-blue-100">
+                            <p className="text-xs font-black text-blue-600 uppercase mb-2">Total Facturado</p>
+                            <p className="text-3xl font-black text-slate-900">{fmt(smartData.financials.total_gross || 0)}</p>
+                            <p className="text-xs text-slate-500 mt-1">Inc. IVA</p>
+                        </div>
+
+                        {/* Labor */}
+                        {smartData.financials.labor_total !== undefined && (
+                            <div className="bg-gradient-to-br from-purple-50 to-white p-6 rounded-2xl border border-purple-100">
+                                <p className="text-xs font-black text-purple-600 uppercase mb-2">Mano de Obra</p>
+                                <p className="text-3xl font-black text-slate-900">{fmt(smartData.financials.labor_total)}</p>
+                                {smartData.financials.labor_hours && (
+                                    <p className="text-xs text-slate-500 mt-1">{smartData.financials.labor_hours} horas</p>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Parts */}
+                        {smartData.financials.parts_total !== undefined && (
+                            <div className="bg-gradient-to-br from-emerald-50 to-white p-6 rounded-2xl border border-emerald-100">
+                                <p className="text-xs font-black text-emerald-600 uppercase mb-2">Recambios</p>
+                                <p className="text-3xl font-black text-slate-900">{fmt(smartData.financials.parts_total)}</p>
+                                <p className="text-xs text-slate-500 mt-1">Materiales</p>
+                            </div>
+                        )}
+
+                        {/* Paint Materials */}
+                        {smartData.financials.paint_material_total !== undefined && (
+                            <div className="bg-gradient-to-br from-orange-50 to-white p-6 rounded-2xl border border-orange-100">
+                                <p className="text-xs font-black text-orange-600 uppercase mb-2">Mat. Pintura</p>
+                                <p className="text-3xl font-black text-slate-900">{fmt(smartData.financials.paint_material_total)}</p>
+                                <p className="text-xs text-slate-500 mt-1">Anexos y pintura</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Parts List if available */}
+                    {smartData.materials?.parts && smartData.materials.parts.length > 0 && (
+                        <div className="mt-6 pt-6 border-t border-slate-100">
+                            <h4 className="text-sm font-black text-slate-700 uppercase mb-4">Listado de Recambios Detectados</h4>
+                            <div className="max-h-64 overflow-y-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="text-xs text-slate-500 font-bold uppercase border-b">
+                                        <tr>
+                                            <th className="text-left py-2 px-3">Descripción</th>
+                                            <th className="text-center py-2 px-3">Cantidad</th>
+                                            <th className="text-right py-2 px-3">Precio Unit.</th>
+                                            <th className="text-right py-2 px-3">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {smartData.materials.parts.map((part: any, idx: number) => (
+                                            <tr key={idx} className="hover:bg-slate-50">
+                                                <td className="py-2 px-3 font-medium text-slate-700">{part.description || part.name || 'Sin descripción'}</td>
+                                                <td className="py-2 px-3 text-center text-slate-600">{part.quantity || 1}</td>
+                                                <td className="py-2 px-3 text-right text-slate-600">{fmt(part.unit_price || 0)}</td>
+                                                <td className="py-2 px-3 text-right font-bold text-slate-900">{fmt((part.quantity || 1) * (part.unit_price || 0))}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {!selectedJobId ? (
                 <div className="bg-white rounded-[32px] border-2 border-dashed border-slate-200 p-24 text-center text-slate-300">

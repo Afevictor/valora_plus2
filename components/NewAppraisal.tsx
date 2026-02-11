@@ -11,7 +11,11 @@ import {
     supabase,
     getWorkshopCustomers,
     saveWorkshopCustomer,
-    WorkshopCustomer
+    WorkshopCustomer,
+    getInsurers,
+    Insurer,
+    createExtractionJob,
+    triggerExtractionProcess
 } from '../services/supabaseClient';
 import WorkshopCustomerForm from './WorkshopCustomerForm';
 
@@ -25,6 +29,7 @@ interface StagedFile {
     category: string;
     bucket: string;
     type: 'image' | 'pdf' | 'video' | 'other';
+    autoProcess?: boolean;
 }
 
 const NewAppraisal: React.FC = () => {
@@ -36,6 +41,7 @@ const NewAppraisal: React.FC = () => {
 
     // Estado de Datos (CUSTOMERS now)
     const [customers, setCustomers] = useState<WorkshopCustomer[]>([]);
+    const [insurers, setInsurers] = useState<Insurer[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState<WorkshopCustomer | null>(null);
     const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -43,7 +49,13 @@ const NewAppraisal: React.FC = () => {
 
     // Datos de Recepción
     const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
-    const [vehicleData, setVehicleData] = useState({ plate: '', vin: '', km: 0, brand: '', model: '' });
+    const [vehicleData, setVehicleData] = useState({ plate: '', vin: '', km: 0, brand: '', model: '', year: new Date().getFullYear(), color: '' });
+    const [claimData, setClaimData] = useState({
+        insurer_id: '',
+        claim_number: '',
+        incident_type: 'collision',
+        incident_date: new Date().toISOString().split('T')[0]
+    });
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [previewFile, setPreviewFile] = useState<StagedFile | null>(null);
@@ -73,6 +85,7 @@ const NewAppraisal: React.FC = () => {
 
             setWorkshopOwnerId(user.id);
             loadCustomers();
+            loadInsurers();
         };
         loadInitData();
     }, [activeRole]);
@@ -82,6 +95,11 @@ const NewAppraisal: React.FC = () => {
         const data = await getWorkshopCustomers();
         if (data) setCustomers(data);
         setLoadingCustomers(false);
+    };
+
+    const loadInsurers = async () => {
+        const data = await getInsurers();
+        if (data) setInsurers(data);
     };
 
     const handleCustomerSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -171,6 +189,14 @@ const NewAppraisal: React.FC = () => {
             alert("Error: No se ha identificado el cliente o el taller.");
             return;
         }
+
+        // Basic Validations (Module C)
+        const cleanPlate = vehicleData.plate.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        const plateRegex = /^[0-9]{4}[BCDFGHJKLMNPRSTVWXYZ]{3}$/;
+        if (cleanPlate && !plateRegex.test(cleanPlate)) {
+            if (!confirm(`La matrícula ${cleanPlate} no sigue el formato estándar (1234BBB). ¿Desea continuar?`)) return;
+        }
+
         setIsSaving(true);
 
         try {
@@ -179,16 +205,16 @@ const NewAppraisal: React.FC = () => {
             // 1. Guardar Vehículo
             await saveVehicle({
                 id: vehicleId,
-                clientId: selectedCustomer.id, // Linking to workshop_customer ID
+                clientId: selectedCustomer.id,
                 plate: vehicleData.plate,
                 vin: vehicleData.vin,
                 brand: vehicleData.brand,
                 model: vehicleData.model,
                 currentKm: vehicleData.km,
-                year: new Date().getFullYear(),
+                year: vehicleData.year,
                 fuel: 'Desconocido',
                 transmission: 'Manual',
-                color: 'Blanco'
+                color: vehicleData.color || 'Blanco'
             }, workshopOwnerId);
 
             // 2. Guardar Orden de Trabajo
@@ -202,6 +228,11 @@ const NewAppraisal: React.FC = () => {
                 entryDate: new Date().toISOString(),
                 description: repairDetails.description,
                 priority: repairDetails.priority,
+                // Module C fields
+                insurer_id: claimData.insurer_id || undefined,
+                claim_number: claimData.claim_number,
+                incident_type: claimData.incident_type,
+                incident_date: claimData.incident_date,
                 totalAmount: 0,
                 photos: [],
                 team: { technicianIds: [] },
@@ -227,7 +258,7 @@ const NewAppraisal: React.FC = () => {
                 const uploadedPath = await uploadWorkshopFile(staged.file, staged.bucket, storagePath);
 
                 if (uploadedPath) {
-                    await saveFileMetadata({
+                    const metadata = await saveFileMetadata({
                         workshop_id: workshopOwnerId,
                         expediente_id: tempTicketId,
                         original_filename: staged.file.name,
@@ -237,9 +268,27 @@ const NewAppraisal: React.FC = () => {
                         mime_type: staged.file.type,
                         size_bytes: staged.file.size
                     });
+
+                    // Trigger AI Extraction if it's a PDF (Assessment)
+                    if (staged.type === 'pdf' && metadata?.id) {
+                        try {
+                            const jobResult = await createExtractionJob({
+                                work_order_id: newOrder.id,
+                                file_id: metadata.id,
+                                status: 'pending'
+                            });
+                            if (jobResult.success && jobResult.job) {
+                                await triggerExtractionProcess(jobResult.job.id);
+                                console.log("AI Extraction triggered for:", staged.file.name);
+                            }
+                        } catch (aiErr) {
+                            console.warn("AI Trigger failed (non-critical):", aiErr);
+                        }
+                    }
                 }
             }
 
+            // 4. Log Activity
             // 4. Log Activity
             const activityFiles: any[] = [];
             for (const staged of stagedFiles) {
@@ -262,16 +311,15 @@ const NewAppraisal: React.FC = () => {
                 raw_data: {
                     vehicle: vehicleData,
                     details: repairDetails,
+                    claim: claimData,
                     tempTicketId
                 }
             });
 
             if (activeRole === 'Client') {
                 alert("¡Solicitud registrada correctamente!");
-                navigate('/kanban');
-            } else {
-                navigate('/kanban');
             }
+            navigate('/kanban');
         } catch (e: any) {
             console.error("[SUBMIT] ERROR:", e);
             alert(`Error durante el envío: ${e.message || 'Error desconocido'}`);
@@ -280,7 +328,7 @@ const NewAppraisal: React.FC = () => {
         }
     };
 
-    const isStep2Valid = stagedFiles.length > 0;
+
 
     return (
         <div className="max-w-5xl mx-auto p-4 md:p-6 min-h-[calc(100vh-2rem)]">
@@ -345,12 +393,113 @@ const NewAppraisal: React.FC = () => {
                 </div>
             )}
 
-            {/* PASO 2: RECEPCIÓN DIGITAL */}
+            {/* PASO 2: DETALLES */}
             {step === 2 && (
+                <div className="animate-fade-in space-y-6">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-bold text-slate-800">2. Datos del Vehículo y Reparación</h2>
+                        <button onClick={() => setStep(1)} className="text-slate-400 hover:text-brand-600 font-bold text-sm">Volver a Cliente</button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Vehículo</h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-2">
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Matrícula *</label>
+                                    <input type="text" className="w-full p-3 border rounded-xl font-mono font-black text-lg bg-slate-50 uppercase" value={vehicleData.plate} onChange={e => setVehicleData({ ...vehicleData, plate: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Marca</label>
+                                    <input type="text" className="w-full p-2 border rounded-lg" value={vehicleData.brand} onChange={e => setVehicleData({ ...vehicleData, brand: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Modelo</label>
+                                    <input type="text" className="w-full p-2 border rounded-lg" value={vehicleData.model} onChange={e => setVehicleData({ ...vehicleData, model: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Año</label>
+                                    <input type="number" className="w-full p-2 border rounded-lg" value={vehicleData.year} onChange={e => setVehicleData({ ...vehicleData, year: parseInt(e.target.value) || new Date().getFullYear() })} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Color</label>
+                                    <input type="text" className="w-full p-2 border rounded-lg" value={vehicleData.color} onChange={e => setVehicleData({ ...vehicleData, color: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Kms</label>
+                                    <input type="number" className="w-full p-2 border rounded-lg" value={vehicleData.km || ''} onChange={e => setVehicleData({ ...vehicleData, km: parseInt(e.target.value) || 0 })} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">VIN</label>
+                                    <input type="text" className="w-full p-2 border rounded-lg font-mono uppercase" value={vehicleData.vin} onChange={e => setVehicleData({ ...vehicleData, vin: e.target.value })} />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* SECCIÓN SINIESTRO - Module C */}
+                        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Siniestro / Seguro</h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-2">
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Aseguradora</label>
+                                    <select
+                                        className="w-full p-2 border rounded-lg bg-slate-50"
+                                        value={claimData.insurer_id}
+                                        onChange={e => setClaimData({ ...claimData, insurer_id: e.target.value })}
+                                    >
+                                        <option value="">Seleccionar Aseguradora</option>
+                                        {insurers.map(i => (
+                                            <option key={i.id} value={i.id}>{i.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="col-span-1">
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Nº Siniestro</label>
+                                    <input type="text" className="w-full p-2 border rounded-lg" value={claimData.claim_number} onChange={e => setClaimData({ ...claimData, claim_number: e.target.value })} />
+                                </div>
+                                <div className="col-span-1">
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Tipo de Incidente</label>
+                                    <select
+                                        className="w-full p-2 border rounded-lg"
+                                        value={claimData.incident_type}
+                                        onChange={e => setClaimData({ ...claimData, incident_type: e.target.value })}
+                                    >
+                                        <option value="collision">Colisión</option>
+                                        <option value="scratch">Rozadura/Rascazo</option>
+                                        <option value="hail">Granizo</option>
+                                        <option value="vandalism">Vandalismo</option>
+                                        <option value="parking">Aparcamiento</option>
+                                        <option value="animal">Atropello animal</option>
+                                        <option value="other">Otro</option>
+                                    </select>
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Fecha de Siniestro</label>
+                                    <input type="date" className="w-full p-2 border rounded-lg" value={claimData.incident_date} onChange={e => setClaimData({ ...claimData, incident_date: e.target.value })} />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-900 text-white p-8 rounded-2xl shadow-xl space-y-6">
+                            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 pb-2">Orden de Trabajo</h3>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Observaciones / Daños</label>
+                                <textarea className="w-full p-4 bg-white/5 border border-white/10 rounded-xl h-24 text-sm outline-none focus:border-emerald-500 transition-colors" value={repairDetails.description} onChange={e => setRepairDetails({ ...repairDetails, description: e.target.value })} />
+                            </div>
+                            <button onClick={() => setStep(3)} disabled={!vehicleData.plate} className="w-full bg-brand-500 hover:bg-brand-400 text-white py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 disabled:opacity-30 transition-all mt-4">
+                                Continuar a Documentos
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* PASO 3: ARCHIVOS/DOCUMENTACIÓN */}
+            {step === 3 && (
                 <div className="animate-fade-in space-y-8">
                     <div className="flex justify-between items-center">
-                        <h2 className="text-xl font-bold text-slate-800">2. Documentación y Evidencias</h2>
-                        <button onClick={() => setStep(1)} className="text-slate-400 hover:text-brand-600 text-sm font-bold">Volver a Cliente</button>
+                        <h2 className="text-xl font-bold text-slate-800">3. Documentación y Evidencias</h2>
+                        <button onClick={() => setStep(2)} className="text-slate-400 hover:text-brand-600 text-sm font-bold">Volver a Detalles</button>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -399,60 +548,11 @@ const NewAppraisal: React.FC = () => {
                                     ))}
                                 </div>
                                 <div className="mt-8 pt-6 border-t border-slate-100 flex justify-end gap-3">
-                                    <button onClick={() => setStep(3)} disabled={!isStep2Valid} className="bg-brand-600 hover:bg-brand-700 text-white px-10 py-3 rounded-xl font-black shadow-lg disabled:opacity-30 transition-all">
-                                        Continuar
+                                    <button onClick={handleSubmit} disabled={isSaving || stagedFiles.length === 0} className="w-full bg-brand-600 hover:bg-brand-700 text-white px-10 py-3 rounded-xl font-black shadow-lg disabled:opacity-30 transition-all">
+                                        {isSaving ? 'Guardando...' : 'CREAR ORDEN DE REPARACIÓN'}
                                     </button>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* PASO 3: DETALLES */}
-            {step === 3 && (
-                <div className="animate-fade-in space-y-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-bold text-slate-800">3. Datos del Vehículo y Reparación</h2>
-                        <button onClick={() => setStep(2)} className="text-slate-400 hover:text-brand-600 font-bold text-sm">Volver a Archivos</button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Vehículo</h3>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="col-span-2">
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Matrícula *</label>
-                                    <input type="text" className="w-full p-3 border rounded-xl font-mono font-black text-lg bg-slate-50 uppercase" value={vehicleData.plate} onChange={e => setVehicleData({ ...vehicleData, plate: e.target.value })} />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Marca</label>
-                                    <input type="text" className="w-full p-2 border rounded-lg" value={vehicleData.brand} onChange={e => setVehicleData({ ...vehicleData, brand: e.target.value })} />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Modelo</label>
-                                    <input type="text" className="w-full p-2 border rounded-lg" value={vehicleData.model} onChange={e => setVehicleData({ ...vehicleData, model: e.target.value })} />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Kms</label>
-                                    <input type="number" className="w-full p-2 border rounded-lg" value={vehicleData.km || ''} onChange={e => setVehicleData({ ...vehicleData, km: parseInt(e.target.value) || 0 })} />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">VIN</label>
-                                    <input type="text" className="w-full p-2 border rounded-lg font-mono uppercase" value={vehicleData.vin} onChange={e => setVehicleData({ ...vehicleData, vin: e.target.value })} />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="bg-slate-900 text-white p-8 rounded-2xl shadow-xl space-y-6">
-                            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 pb-2">Orden de Trabajo</h3>
-                            <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Observaciones / Daños</label>
-                                <textarea className="w-full p-4 bg-white/5 border border-white/10 rounded-xl h-24 text-sm outline-none focus:border-emerald-500 transition-colors" value={repairDetails.description} onChange={e => setRepairDetails({ ...repairDetails, description: e.target.value })} />
-                            </div>
-                            <button onClick={handleSubmit} disabled={isSaving || !vehicleData.plate} className="w-full bg-brand-500 hover:bg-brand-400 text-white py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 disabled:opacity-30 transition-all mt-4">
-                                {isSaving ? 'Guardando...' : 'CREAR ORDEN DE REPARACIÓN'}
-                            </button>
                         </div>
                     </div>
                 </div>

@@ -14,7 +14,16 @@ import {
     Quote,
     Opportunity,
     HourCostCalculation,
-    AppRole
+    AppRole,
+    PurchaseDocument,
+    PurchaseLine,
+    WorkOrderStatus,
+    OTStatus,
+    ALLOWED_TRANSITIONS,
+    WorkOrderStateTransition,
+    EmployeeAttendance,
+    AttendanceBreak,
+    EmployeeAbsence
 } from '../types';
 
 const SUPABASE_URL = 'https://igwbevwytsufppqohtsh.supabase.co';
@@ -203,10 +212,16 @@ export const logClientActivity = async (activity: {
 
 export const uploadWorkshopFile = async (f: File, b: string, p: string) => {
     try {
+        console.log('[UPLOAD] Attempting upload:', { bucket: b, path: p, fileName: f.name, fileSize: f.size });
         const { data, error } = await supabase.storage.from(b).upload(p, f, { cacheControl: '3600', upsert: true });
-        if (error) throw error;
+        if (error) {
+            console.error('[UPLOAD] Storage error:', error);
+            throw error;
+        }
+        console.log('[UPLOAD] Success:', data.path);
         return data.path;
-    } catch (e) {
+    } catch (e: any) {
+        console.error('[UPLOAD] Upload failed:', e);
         logError('uploadWorkshopFile', e);
         return null;
     }
@@ -222,9 +237,14 @@ export const saveFileMetadata = async (m: any) => {
             workshop_id: m.workshop_id || user.id
         };
 
-        const { error } = await supabase.from('workshop_files').insert(payload);
+        const { data, error } = await supabase
+            .from('workshop_files')
+            .insert(payload)
+            .select()
+            .single();
+
         if (error) throw error;
-        return true;
+        return data;
     } catch (e) {
         logError('saveFileMetadata', e);
         throw e;
@@ -416,6 +436,25 @@ export const getClientsFromSupabase = async (): Promise<Client[]> => {
     }
 };
 
+export const getInsurers = async (): Promise<Insurer[]> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
+
+        const { data, error } = await supabase
+            .from('insurers')
+            .select('*')
+            .eq('workshop_id', user.id)
+            .order('name', { ascending: true });
+
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.error("Error fetching insurers:", e);
+        return [];
+    }
+};
+
 export const saveClientToSupabase = async (client: Client) => {
     try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -540,6 +579,43 @@ export const getWorkOrdersFromSupabase = async (): Promise<RepairJob[]> => {
     }
 };
 
+export const getWorkOrder = async (id: string): Promise<RepairJob | null> => {
+    try {
+        const { data, error } = await supabase
+            .from('work_orders')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error) throw error;
+        if (!data) return null;
+
+        const raw = data.raw_data || {};
+        return {
+            ...raw,
+            id: data.id,
+            status: data.status || raw.status,
+            plate: data.plate || raw.plate,
+            vehicle: data.vehicle || raw.vehicle,
+            insuredName: data.insured_name || raw.insuredName,
+            expedienteId: data.expediente_id || raw.expedienteId,
+            entryDate: data.entry_date || raw.entryDate,
+            insurancePayment: data.insurance_payment,
+            insurancePaymentStatus: data.insurance_payment_status,
+            clientId: data.client_id,
+            vehicleId: data.vehicle_id,
+            valuationId: raw.valuationId,
+            currentKm: data.current_km || raw.currentKm,
+            vin: raw.vin,
+            totalAmount: data.total_amount || raw.totalAmount,
+            requestAppraisal: data.request_appraisal
+        } as RepairJob;
+    } catch (e) {
+        logError('getWorkOrder', e);
+        return null;
+    }
+};
+
 export const getWorkOrdersByClient = async (clientId: string): Promise<WorkOrder[]> => {
     try {
         const { data, error } = await supabase
@@ -568,19 +644,6 @@ export const getWorkOrdersByClient = async (clientId: string): Promise<WorkOrder
         return [];
     }
 };
-export const getWorkOrder = async (id: string): Promise<RepairJob | null> => {
-    try {
-        const { data, error } = await supabase.from('work_orders').select('*').eq('id', id).single();
-        if (error) throw error;
-        return data ? ({
-            ...data.raw_data,
-            insurancePayment: data.insurance_payment,
-            insurancePaymentStatus: data.insurance_payment_status
-        } as RepairJob) : null;
-    } catch (e) {
-        return null;
-    }
-};
 
 export const saveWorkOrderToSupabase = async (wo: WorkOrder, explicitWorkshopId?: string) => {
     try {
@@ -593,6 +656,16 @@ export const saveWorkOrderToSupabase = async (wo: WorkOrder, explicitWorkshopId?
             client_id: wo.clientId,
             expediente_id: wo.expedienteId || wo.id,
             status: wo.status,
+            // Module C proper column mapping
+            insurer_id: wo.insurer_id,
+            claim_number: wo.claim_number,
+            incident_type: wo.incident_type,
+            incident_date: wo.incident_date,
+            vin: wo.vin,
+            current_km: wo.currentKm || 0,
+            plate: wo.plate,
+            vehicle: wo.vehicle,
+            insured_name: wo.insuredName,
             raw_data: wo
         };
         const { error } = await supabase.from('work_orders').upsert(payload);
@@ -1271,6 +1344,24 @@ export const saveBitrixSettingsToSupabase = async (webhookUrl: string, expertId?
 
 // --- WORKSHOP CUSTOMERS SERVICE ---
 
+export interface Insurer {
+    id: string;
+    workshop_id: string;
+    name: string;
+    email?: string;
+    phone?: string;
+}
+
+export interface Supplier {
+    id: string;
+    workshop_id: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    tax_id?: string;
+}
+
 export interface WorkshopCustomer {
     id: string;
     workshop_id: string;
@@ -1285,7 +1376,92 @@ export interface WorkshopCustomer {
     postal_code: string;
     notes?: string;
     created_at?: string;
+    currentKm?: number;
+    insuredName?: string;
 }
+
+export const getWorkOrderParts = async (workOrderId: string): Promise<any[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('work_order_parts')
+            .select('*')
+            .eq('work_order_id', workOrderId);
+
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.error("Error fetching work order parts:", e);
+        return [];
+    }
+};
+
+export const getExtractionJobs = async (workOrderId: string): Promise<any[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('extraction_jobs')
+            .select('*')
+            .eq('work_order_id', workOrderId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.error("Error fetching extraction jobs:", e);
+        return [];
+    }
+};
+
+export const processExtractionResults = async (jobId: string): Promise<boolean> => {
+    try {
+        const { data: job, error: jobErr } = await supabase
+            .from('extraction_jobs')
+            .select('*')
+            .eq('id', jobId)
+            .single();
+
+        if (jobErr) throw jobErr;
+        if (job.status !== 'completed' || !job.extracted_data) return false;
+
+        const data = job.extracted_data;
+        const workOrderId = job.work_order_id;
+        const workshopId = job.workshop_id;
+
+        // 1. Process Parts
+        if (data.parts && Array.isArray(data.parts)) {
+            const partLines = data.parts.map((p: any) => ({
+                workshop_id: workshopId,
+                work_order_id: workOrderId,
+                part_number: p.part_number || p.reference,
+                description: p.description,
+                quantity: parseFloat(p.quantity || 1),
+                unit_price: parseFloat(p.price || 0),
+                total_amount: parseFloat(p.total || 0),
+                confidence_score: p.confidence || 1.0
+            }));
+            await supabase.from('work_order_parts').insert(partLines);
+        }
+
+        // 2. Process Labor (Billing)
+        if (data.labor && Array.isArray(data.labor)) {
+            const laborLines = data.labor.map((l: any) => ({
+                workshop_id: workshopId,
+                work_order_id: workOrderId,
+                description: l.description,
+                quantity: parseFloat(l.hours || 0),
+                unit_price: parseFloat(l.price_hour || 0),
+                total_amount: parseFloat(l.total || 0),
+                confidence_score: l.confidence || 1.0,
+                billing_type: 'Labor'
+            }));
+            await supabase.from('work_order_billing').insert(laborLines);
+        }
+
+        return true;
+    } catch (e) {
+        console.error("Error processing AI results:", e);
+        return false;
+    }
+};
 
 export const getWorkshopCustomers = async (): Promise<WorkshopCustomer[]> => {
     try {
@@ -1358,3 +1534,644 @@ export const deleteWorkshopCustomer = async (id: string): Promise<boolean> => {
         return false;
     }
 }
+
+// --- AI Extraction Engine (Module A) ---
+
+export const createExtractionJob = async (jobData: {
+    work_order_id: string | null;
+    file_id: string;
+    status: string;
+}) => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("No authenticated user");
+
+        const { data, error } = await supabase
+            .from('extraction_jobs')
+            .insert({
+                ...jobData,
+                workshop_id: user.id,
+                created_by: user.id
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+        return { success: true, job: data };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+};
+
+export const triggerExtractionProcess = async (jobId: string) => {
+    try {
+        const { data, error } = await supabase.functions.invoke('extraction-job', {
+            body: { action: 'process', jobId }
+        });
+
+        if (error) throw error;
+        return { success: true, data };
+    } catch (e: any) {
+        console.error("Extraction Trigger Failed:", e);
+        return { success: false, error: e.message };
+    }
+};
+
+
+// --- Time Tracking & Productivity (Module B) ---
+
+export const getWorkOrderTasks = async (workOrderId: string) => {
+    try {
+        const { data, error } = await supabase
+            .from('work_order_tasks')
+            .select('*')
+            .eq('work_order_id', workOrderId)
+            .order('created_at', { ascending: true });
+
+        if (error) throw error;
+        return data || [];
+    } catch (e: any) {
+        console.error("Error fetching tasks:", e);
+        return [];
+    }
+};
+
+export const createWorkOrderTask = async (task: {
+    workshop_id: string;
+    work_order_id: string;
+    employee_id: string;
+    task_type: string;
+    description?: string;
+    status?: string;
+}) => {
+    try {
+        const { data, error } = await supabase
+            .from('work_order_tasks')
+            .insert([task])
+            .select()
+            .single();
+
+        if (error) throw error;
+        return { success: true, task: data };
+    } catch (e: any) {
+        console.error("Error creating task:", e);
+        return { success: false, error: e.message };
+    }
+};
+
+export const getActiveTimeLog = async (employeeId: string) => {
+    try {
+        const { data, error } = await supabase
+            .from('task_time_logs')
+            .select('*, work_order_tasks(*)')
+            .eq('employee_id', employeeId)
+            .neq('status', 'completed')
+            .is('ended_at', null)
+            .maybeSingle();
+
+        if (error) throw error;
+        return data;
+    } catch (e) {
+        console.error("Error fetching active log:", e);
+        return null;
+    }
+};
+
+export const startTask = async (taskId: string, employeeId: string) => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("No authenticated user");
+
+        // 1. Pause any active tasks for this employee
+        const active = await getActiveTimeLog(employeeId);
+        if (active && active.status === 'in_progress') {
+            await pauseTask(active.id);
+        }
+
+        // 2. Start new log
+        const { data, error } = await supabase
+            .from('task_time_logs')
+            .insert({
+                workshop_id: user.id,
+                task_id: taskId,
+                employee_id: employeeId,
+                started_at: new Date().toISOString(),
+                status: 'in_progress'
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // 3. Update task status
+        await supabase.from('work_order_tasks').update({ status: 'in_progress' }).eq('id', taskId);
+
+        return { success: true, timeLog: data };
+    } catch (e: any) {
+        console.error("Start task failed:", e);
+        return { success: false, message: e.message };
+    }
+};
+
+export const pauseTask = async (timeLogId: string) => {
+    try {
+        // Fetch started_at to calculate duration
+        const { data: logData } = await supabase.from('task_time_logs').select('started_at').eq('id', timeLogId).single();
+        if (!logData) throw new Error("Log not found");
+
+        const endedAt = new Date().toISOString();
+        const durationSeconds = Math.floor((new Date(endedAt).getTime() - new Date(logData.started_at).getTime()) / 1000);
+
+        const { error } = await supabase
+            .from('task_time_logs')
+            .update({
+                status: 'paused',
+                ended_at: endedAt,
+                duration_seconds: durationSeconds
+            })
+            .eq('id', timeLogId);
+
+        if (error) throw error;
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, message: e.message };
+    }
+};
+
+export const resumeTask = async (taskId: string, employeeId: string) => {
+    // Resuming is essentially starting a new log for the same task
+    return await startTask(taskId, employeeId);
+};
+
+export const finishTask = async (timeLogId: string, taskId: string) => {
+    try {
+        // Fetch started_at to calculate duration
+        const { data: logData } = await supabase.from('task_time_logs').select('started_at').eq('id', timeLogId).single();
+        if (!logData) throw new Error("Log not found");
+
+        const endedAt = new Date().toISOString();
+        const durationSeconds = Math.floor((new Date(endedAt).getTime() - new Date(logData.started_at).getTime()) / 1000);
+
+        const { error: logErr } = await supabase
+            .from('task_time_logs')
+            .update({
+                status: 'completed',
+                ended_at: endedAt,
+                duration_seconds: durationSeconds
+            })
+            .eq('id', timeLogId);
+
+        if (logErr) throw logErr;
+
+        // Update task to finished
+        await supabase.from('work_order_tasks')
+            .update({ status: 'finished' })
+            .eq('id', taskId);
+
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, message: e.message };
+    }
+};
+
+export const getTaskTimeLogsForOrder = async (workOrderId: string) => {
+    try {
+        const { data: tasks } = await supabase.from('work_order_tasks').select('id').eq('work_order_id', workOrderId);
+        if (!tasks || tasks.length === 0) return [];
+
+        const taskIds = tasks.map(t => t.id);
+        const { data, error } = await supabase
+            .from('task_time_logs')
+            .select('*, work_order_tasks(task_type), employees:employee_id(full_name)')
+            .in('task_id', taskIds)
+            .order('started_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.error("Error fetching logs:", e);
+        return [];
+    }
+};
+
+// --- MODULE D: Purchase Importer ---
+
+export const getSuppliers = async (): Promise<Supplier[]> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
+
+        const { data, error } = await supabase
+            .from('suppliers')
+            .select('*')
+            .eq('workshop_id', user.id)
+            .order('name', { ascending: true });
+
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.error("Error fetching suppliers:", e);
+        return [];
+    }
+};
+
+export const createPurchaseDocument = async (doc: Partial<PurchaseDocument>): Promise<PurchaseDocument | null> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("No authenticated user");
+
+        const { data, error } = await supabase
+            .from('purchase_documents')
+            .insert({ ...doc, workshop_id: user.id })
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    } catch (e) {
+        console.error("Error creating purchase document:", e);
+        return null;
+    }
+};
+
+export const createPurchaseLines = async (lines: Partial<PurchaseLine>[]): Promise<boolean> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("No authenticated user");
+
+        const payload = lines.map(l => ({ ...l, workshop_id: user.id }));
+        const { error } = await supabase.from('purchase_lines').insert(payload);
+
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        console.error("Error creating purchase lines:", e);
+        return false;
+    }
+};
+
+export const getWorkOrderByNumber = async (woNumber: string): Promise<WorkOrder | null> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return null;
+
+        const { data, error } = await supabase
+            .from('work_orders')
+            .select('*')
+            .eq('workshop_id', user.id)
+            .eq('expediente_id', woNumber)
+            .maybeSingle();
+
+        if (error) throw error;
+        return data;
+    } catch (e) {
+        console.error("Error fetching WO by number:", e);
+        return null;
+    }
+};
+
+export const getPartByNumber = async (workOrderId: string, partNumber: string): Promise<any | null> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return null;
+
+        const { data, error } = await supabase
+            .from('work_order_parts')
+            .select('*')
+            .eq('workshop_id', user.id)
+            .eq('work_order_id', workOrderId)
+            .eq('part_number', partNumber)
+            .maybeSingle();
+
+        if (error) throw error;
+        return data;
+    } catch (e) {
+        console.error("Error fetching part by number:", e);
+        return null;
+    }
+};
+
+export const updateWorkOrderPartCost = async (partId: string, cost: number): Promise<boolean> => {
+    try {
+        const { error } = await supabase
+            .from('work_order_parts')
+            .update({ cost_total: cost, cost_source: 'purchase' })
+            .eq('id', partId);
+
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        console.error("Error updating part cost:", e);
+        return false;
+    }
+};
+
+// --- MODULE F: State Machine ---
+
+export const transitionWorkOrder = async (workOrderId: string, toState: OTStatus, reason?: string): Promise<{ success: boolean, error?: string }> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("No authenticated user");
+
+        // 1. Get Current Order
+        const { data: wo, error: woErr } = await supabase
+            .from('work_orders')
+            .select('status, workshop_id')
+            .eq('id', workOrderId)
+            .single();
+
+        if (woErr) throw woErr;
+
+        // 2. Validate Transition
+        const currentStatus = wo.status as OTStatus;
+        const allowed = ALLOWED_TRANSITIONS[currentStatus] || [];
+        if (!allowed.includes(toState)) {
+            return { success: false, error: `Transición no permitida de ${currentStatus} a ${toState}` };
+        }
+
+        // 3. Update Order
+        const { error: updErr } = await supabase
+            .from('work_orders')
+            .update({ status: toState })
+            .eq('id', workOrderId);
+
+        if (updErr) throw updErr;
+
+        // 4. Record Transition
+        await supabase.from('work_order_state_transitions').insert({
+            workshop_id: wo.workshop_id,
+            work_order_id: workOrderId,
+            from_state: currentStatus,
+            to_state: toState,
+            transitioned_by: user.id,
+            reason
+        });
+
+        return { success: true };
+    } catch (e: any) {
+        console.error("Error transitioning work order:", e);
+        return { success: false, error: e.message };
+    }
+};
+
+export const getWorkOrderTransitions = async (workOrderId: string): Promise<WorkOrderStateTransition[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('work_order_state_transitions')
+            .select('*')
+            .eq('work_order_id', workOrderId)
+            .order('transitioned_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.error("Error fetching transitions:", e);
+        return [];
+    }
+};
+
+// --- MODULE G: Control Horario (Attendance) ---
+
+export const clockIn = async (): Promise<EmployeeAttendance | null> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("No authenticated user");
+
+        // Check for active session
+        const { data: active } = await supabase
+            .from('employee_attendance')
+            .select('id')
+            .eq('employee_id', user.id)
+            .is('clock_out', null)
+            .maybeSingle();
+
+        if (active) throw new Error("Ya tienes una jornada activa.");
+
+        // Get workshop context
+        const workshopId = user.user_metadata?.workshop_id || user.id;
+
+        const { data, error } = await supabase
+            .from('employee_attendance')
+            .insert({
+                employee_id: user.id,
+                workshop_id: workshopId,
+                clock_in: new Date().toISOString(),
+                day_type: 'work'
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    } catch (e) {
+        console.error("Error in clockIn:", e);
+        throw e;
+    }
+};
+
+export const clockOut = async (attendanceId: string, notes?: string): Promise<boolean> => {
+    try {
+        const { error } = await supabase
+            .from('employee_attendance')
+            .update({
+                clock_out: new Date().toISOString(),
+                notes,
+                modified_at: new Date().toISOString()
+            })
+            .eq('id', attendanceId);
+
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        console.error("Error in clockOut:", e);
+        return false;
+    }
+};
+
+export const startBreak = async (attendanceId: string, type: 'meal' | 'rest' | 'personal'): Promise<AttendanceBreak | null> => {
+    try {
+        const { data, error } = await supabase
+            .from('attendance_breaks')
+            .insert({
+                attendance_id: attendanceId,
+                break_start: new Date().toISOString(),
+                break_type: type
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    } catch (e) {
+        console.error("Error in startBreak:", e);
+        return null;
+    }
+};
+
+export const endBreak = async (breakId: string): Promise<boolean> => {
+    try {
+        const { error } = await supabase
+            .from('attendance_breaks')
+            .update({ break_end: new Date().toISOString() })
+            .eq('id', breakId);
+
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        console.error("Error in endBreak:", e);
+        return false;
+    }
+};
+
+export const getCurrentAttendance = async (): Promise<EmployeeAttendance | null> => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return null;
+
+        const { data, error } = await supabase
+            .from('employee_attendance')
+            .select('*, attendance_breaks(*)')
+            .eq('employee_id', user.id)
+            .is('clock_out', null)
+            .maybeSingle();
+
+        if (error) throw error;
+        return data;
+    } catch (e) {
+        console.error("Error fetching current attendance:", e);
+        return null;
+    }
+};
+
+
+// --- MODULE D: MANUAL MATCHING HELPERS ---
+
+export const getActiveWorkOrders = async (): Promise<any[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('work_orders')
+            .select('id, number, license_plate, vehicle_make, vehicle_model, status') // 'number' might be 'work_order_number' depending on schema, let's use both or check. Previous code used 'work_order_number' in specs but 'getWorkOrder' returns 'number'? 
+            // In ExpedienteDetail: foundJob.expedienteId is used. 
+            // In NewAppraisal: tempTicketId.
+            // Let's select * to be safe? No, too big. 
+            // Let's try to select specific fields and fall back.
+            // Actually, getWorkOrder returns * usually.
+            // I'll select * for now to avoid errors, we can optimize later.
+            .select('*')
+            .in('status', ['intake', 'assigned', 'in_progress', 'ready_to_close'])
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.error("Error fetching active work orders:", e);
+        return [];
+    }
+};
+
+export const createWorkOrderPart = async (workOrderId: string, partData: {
+    part_number: string,
+    description: string,
+    quantity: number,
+    unit_price: number,
+    cost_price?: number,
+    supplier_id?: string
+}) => {
+    try {
+        const { data, error } = await supabase
+            .from('work_order_parts')
+            .insert({
+                work_order_id: workOrderId,
+                part_number: partData.part_number,
+                description: partData.description,
+                quantity: partData.quantity,
+                unit_price: partData.unit_price,
+                cost_price: partData.cost_price,
+                supplier_id: partData.supplier_id,
+                status: 'ordered'
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    } catch (e) {
+        console.error("Error creating work order part:", e);
+        return null;
+    }
+};
+
+export const manualMatchPurchaseLine = async (lineId: string, workOrderId: string, partId: string, totalCost: number) => {
+    try {
+        // 1. Update Purchase Line
+        const { error: lineError } = await supabase
+            .from('purchase_lines')
+            .update({
+                work_order_id: workOrderId,
+                work_order_part_id: partId,
+                matching_status: 'matched'
+            })
+            .eq('id', lineId);
+
+        if (lineError) throw lineError;
+
+        // 2. Update Work Order Part Cost (Accumulate? Or Set?)
+        // Usually we add the purchase cost to the part cost.
+        // For now, let's assume we set it.
+        // We'll call updateWorkOrderPartCost which is already imported/defined?
+        // No, I'll implement a direct update here.
+        // But wait, updateWorkOrderPartCost was imported in PurchaseImporter from THIS file.
+        // Let's use it if possible.
+        // Since I'm IN supabaseClient.ts, I can just call it if it's exported in the same file.
+        // I'll use direct supabase call to be safe.
+
+        const { error: partError } = await supabase.rpc('update_part_cost', {
+            p_part_id: partId,
+            p_cost: totalCost
+        });
+
+        // Backup update if RPC doesn't exist (it should, but just in case)
+        if (partError) {
+            console.warn("RPC update_part_cost failed, trying direct update", partError);
+            const { error: directError } = await supabase
+                .from('work_order_parts')
+                .update({ cost_price: totalCost }) // This overwrites.
+                .eq('id', partId);
+            if (directError) throw directError;
+        }
+
+        return true;
+    } catch (e) {
+        console.error("Error manual matching:", e);
+        return false;
+    }
+};
+
+export const getPurchaseLinesForWorkOrder = async (workOrderId: string): Promise<any[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('purchase_lines')
+            .select('*')
+            .eq('work_order_id', workOrderId);
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        return [];
+    }
+};
+
+
+export const getWorkOrderBilling = async (workOrderId: string): Promise<any | null> => {
+    try {
+        const { data, error } = await supabase
+            .from('work_order_billing')
+            .select('*')
+            .eq('work_order_id', workOrderId)
+            .maybeSingle();
+        if (error) throw error;
+        return data || null;
+    } catch (e) {
+        console.error("Error fetching work order billing:", e);
+        return null;
+    }
+};

@@ -1,22 +1,34 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { RepairJob, Employee, Client, Vehicle, HourCostCalculation } from '../types';
+import { RepairJob, Employee, Client, Vehicle, HourCostCalculation, OTStatus } from '../types';
 import {
     getClientsFromSupabase,
     getWorkOrder,
+
     getEmployeesFromSupabase,
     getActiveHourCostCalculation,
     saveLaborLog,
     getLaborLogsForOrder,
     getVehicle,
     getFilesForExpediente,
-    getValuationById, // Added this
+    getValuationById,
     updateWorkOrderStatus,
+    createWorkOrderTask,
+    getActiveTimeLog,
+    startTask,
+    pauseTask,
+    resumeTask,
+    finishTask,
+    getTaskTimeLogsForOrder,
+    getExtractionJobs,
+    processExtractionResults,
+    getPurchaseLinesForWorkOrder,
     supabase
 } from '../services/supabaseClient';
-import { ValuationRequest } from '../types'; // Added this
+import { ValuationRequest } from '../types';
 import DualChat from './DualChat';
+import PreCloseModal from './PreCloseModal';
+import { transitionWorkOrder } from '../services/supabaseClient';
 
 const REPAIR_PHASES = [
     { value: 'disassembly', label: 'Desmontaje' },
@@ -27,6 +39,8 @@ const REPAIR_PHASES = [
 type MandatoryPhase = typeof REPAIR_PHASES[number]['value'];
 
 interface ActiveTimer {
+    timeLogId: string;
+    taskId: string;
     startTime: number;
     accumulatedSeconds: number;
     phase: MandatoryPhase;
@@ -50,6 +64,11 @@ const ExpedienteDetail: React.FC = () => {
     const [valuation, setValuation] = useState<ValuationRequest | null>(null); // Added this
     const [isLoadingMain, setIsLoadingMain] = useState(true);
     const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
+    const [refreshFiles, setRefreshFiles] = useState(0);
+    const [extractionJobs, setExtractionJobs] = useState<any[]>([]);
+    const [purchaseLines, setPurchaseLines] = useState<any[]>([]);
+    const [processingAi, setProcessingAi] = useState(false);
+    const [showPreClose, setShowPreClose] = useState(false);
 
     // Estado del Temporizador
     const [timer, setTimer] = useState<ActiveTimer | null>(null);
@@ -75,13 +94,15 @@ const ExpedienteDetail: React.FC = () => {
                 setJob(foundJob);
 
                 // Obtener datos asociados en paralelo
-                const [staff, rateData, logs, vData, fData, cDataList] = await Promise.all([
+                const [staff, rateData, logs, vData, fData, cDataList, aiJobs, pLines] = await Promise.all([
                     getEmployeesFromSupabase(),
                     getActiveHourCostCalculation(currentYear, user.id),
-                    getLaborLogsForOrder(foundJob.id),
+                    getTaskTimeLogsForOrder(foundJob.id),
                     foundJob.vehicleId ? getVehicle(foundJob.vehicleId) : Promise.resolve(null),
                     getFilesForExpediente(foundJob.id, foundJob.expedienteId),
-                    getClientsFromSupabase()
+                    getClientsFromSupabase(),
+                    getExtractionJobs(foundJob.id),
+                    getPurchaseLinesForWorkOrder(foundJob.id)
                 ]);
 
                 setEmployees(staff);
@@ -89,6 +110,8 @@ const ExpedienteDetail: React.FC = () => {
                 setLaborLogs(logs);
                 setVehicle(vData);
                 setFiles(fData);
+                setExtractionJobs(aiJobs);
+                setPurchaseLines(pLines);
 
                 if (foundJob.clientId) {
                     setClient(cDataList.find(c => c.id === foundJob.clientId) || null);
@@ -102,49 +125,40 @@ const ExpedienteDetail: React.FC = () => {
                 console.log(`[FILES DEBUG] Processed ${fData.length} files for job ${foundJob.id}`);
             }
 
-            // Recuperar estado del temporizador
-            const saved = localStorage.getItem(`vp_labor_timer_${id}`);
-            if (saved) {
-                try {
-                    const parsed: ActiveTimer = JSON.parse(saved);
-
-                    // MIGRATION: Fix legacy phase names to match DB constraints
-                    const phaseMap: Record<string, MandatoryPhase> = {
-                        'Desmontaje': 'disassembly',
-                        'Reparación Chapa': 'bodywork',
-                        'Pintura': 'paint'
-                    };
-
-                    // If the saved phase is a legacy key, map it. Otherwise use it as is if valid, else default to disconnect.
-                    let safePhase: MandatoryPhase | null = null;
-
-                    if (REPAIR_PHASES.some(p => p.value === parsed.phase)) {
-                        safePhase = parsed.phase as MandatoryPhase;
-                    } else if (phaseMap[parsed.phase as string]) {
-                        safePhase = phaseMap[parsed.phase as string];
-                        // Update storage with fixed value immediately
-                        parsed.phase = safePhase;
-                        localStorage.setItem(`vp_labor_timer_${id}`, JSON.stringify(parsed));
-                    }
-
-                    if (safePhase) {
-                        setTimer(parsed);
-                        setSelectedPhase(safePhase);
-                        setSelectedEmployeeId(parsed.employeeId);
-                    } else {
-                        // Invalid state, clear it to prevent crash
-                        console.warn("Found invalid timer state, clearing:", parsed);
-                        localStorage.removeItem(`vp_labor_timer_${id}`);
-                    }
-                } catch (e) {
-                    console.error("Error parsing saved timer:", e);
-                    localStorage.removeItem(`vp_labor_timer_${id}`);
+            // Verify Server-Side Active Timer
+            const checkActiveTimer = async () => {
+                const { data: { user } } = await supabase.auth.getUser();
+                // If no employee selected, maybe check for current user?
+                // For now, we rely on selectedEmployeeId
+                if (!selectedEmployeeId) {
+                    setTimer(null);
+                    return;
                 }
-            }
+
+                const activeLog = await getActiveTimeLog(selectedEmployeeId);
+
+                if (activeLog && activeLog.work_order_tasks?.work_order_id === id) {
+                    console.log("Found active server task:", activeLog);
+                    setTimer({
+                        timeLogId: activeLog.id,
+                        taskId: activeLog.task_id,
+                        employeeId: activeLog.employee_id,
+                        phase: activeLog.work_order_tasks.task_type as MandatoryPhase,
+                        startTime: new Date(activeLog.started_at).getTime(),
+                        accumulatedSeconds: 0, // Simplification for MVP
+                        isPaused: activeLog.status === 'paused'
+                    });
+                    setSelectedPhase(activeLog.work_order_tasks.task_type as MandatoryPhase);
+                } else {
+                    setTimer(null);
+                }
+            };
+
+            await checkActiveTimer();
             setIsLoadingMain(false);
         };
         loadAllData();
-    }, [id]);
+    }, [id, refreshFiles, selectedEmployeeId]); // Re-run when employee selection changes
 
     // Gestor de Descargas
     const handleDownload = async (url: string, filename: string, fileId: string) => {
@@ -169,7 +183,7 @@ const ExpedienteDetail: React.FC = () => {
         }
     };
 
-    // Lógica del Cronómetro
+    // Lógica del Cronómetro (Visual Ticker)
     useEffect(() => {
         let interval: any;
         if (timer && !timer.isPaused) {
@@ -186,90 +200,140 @@ const ExpedienteDetail: React.FC = () => {
         return () => clearInterval(interval);
     }, [timer]);
 
-    // --- Acciones del Temporizador ---
-    const startTimer = () => {
-        if (!selectedPhase || !selectedEmployeeId) return;
-        const newState: ActiveTimer = {
-            startTime: Date.now(),
-            accumulatedSeconds: 0,
-            phase: selectedPhase as MandatoryPhase,
-            employeeId: selectedEmployeeId,
-            isPaused: false
+    // --- Acciones del Temporizador (Server-Side) ---
+    const startTimer = async () => {
+        if (!selectedPhase || !selectedEmployeeId || !job) return;
+
+        // 1. Obtener User ID (Workshop Owner)
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // 2. Crear Task (Auto-Assign)
+        // En V3, idealmente el Manager crea la task primero. Aquí lo hacemos al vuelo.
+        const taskPayload = {
+            workshop_id: user.id,
+            work_order_id: job.id,
+            employee_id: selectedEmployeeId,
+            task_type: selectedPhase,
+            status: 'in_progress',
+            description: `Tarea auto-generada: ${selectedPhase}`
         };
-        setTimer(newState);
-        localStorage.setItem(`vp_labor_timer_${id}`, JSON.stringify(newState));
+
+        const { success, task, error } = await createWorkOrderTask(taskPayload);
+
+        if (!success || !task) {
+            alert(`Error creando tarea: ${error}`);
+            return;
+        }
+
+        // 3. Iniciar Timer (RPC)
+        const res = await startTask(task.id, selectedEmployeeId);
+        if (res.success && res.timeLog) {
+            setTimer({
+                timeLogId: res.timeLog.id,
+                taskId: task.id,
+                startTime: Date.now(),
+                accumulatedSeconds: 0,
+                phase: selectedPhase,
+                employeeId: selectedEmployeeId,
+                isPaused: false
+            });
+            setDisplaySeconds(0);
+        } else {
+            alert(`No se pudo iniciar: ${res.message}`);
+        }
     };
 
-    const pauseTimer = () => {
+    const pauseTimer = async () => {
         if (!timer || timer.isPaused) return;
-        const now = Date.now();
-        const sessionSeconds = Math.floor((now - timer.startTime) / 1000);
-        const newState: ActiveTimer = { ...timer, accumulatedSeconds: timer.accumulatedSeconds + sessionSeconds, isPaused: true };
-        setTimer(newState);
-        localStorage.setItem(`vp_labor_timer_${id}`, JSON.stringify(newState));
+
+        const result = await pauseTask(timer.timeLogId);
+        if (result.success) {
+            const now = Date.now();
+            const sessionSeconds = Math.floor((now - timer.startTime) / 1000);
+
+            setTimer({
+                ...timer,
+                accumulatedSeconds: timer.accumulatedSeconds + sessionSeconds,
+                isPaused: true
+            });
+        } else {
+            alert(`Error al pausar: ${result.message}`);
+        }
     };
 
-    const resumeTimer = () => {
+    const resumeTimer = async () => {
         if (!timer || !timer.isPaused) return;
-        const newState: ActiveTimer = { ...timer, startTime: Date.now(), isPaused: false };
-        setTimer(newState);
-        localStorage.setItem(`vp_labor_timer_${id}`, JSON.stringify(newState));
+
+        const result = await resumeTask(timer.taskId, timer.employeeId);
+        if (result.success) {
+            setTimer({
+                ...timer,
+                startTime: Date.now(),
+                isPaused: false
+            });
+        } else {
+            alert(`Error al reanudar: ${result.message}`);
+        }
     };
 
     const finishTimer = async () => {
-        if (!timer || !job || !client) return;
+        if (!timer || !job) return;
         setIsFinishing(true);
 
-        const now = Date.now();
-        const sessionSeconds = timer.isPaused ? 0 : Math.floor((now - timer.startTime) / 1000);
-        const totalSeconds = timer.accumulatedSeconds + sessionSeconds;
-        const minutes = Math.max(1, Math.round(totalSeconds / 60));
-        const laborCost = (minutes / 60) * workshopRate;
+        const result = await finishTask(timer.timeLogId, timer.taskId);
 
-        const logData = {
-            work_order_id: job.id,
-            client_id: client.id,
-            employee_id: timer.employeeId,
-            phase: timer.phase,
-            start_time: new Date(timer.startTime - (timer.accumulatedSeconds * 1000)).toISOString(),
-            end_time: new Date().toISOString(),
-            duration_minutes: minutes,
-            hourly_rate_snapshot: workshopRate,
-            calculated_labor_cost: parseFloat(laborCost.toFixed(2))
-        };
-
-        const result = await saveLaborLog(logData);
         if (result.success) {
-            setLaborLogs(prev => [logData, ...prev]);
             setTimer(null);
-            localStorage.removeItem(`vp_labor_timer_${id}`);
             setSelectedPhase('');
+            // Refresh Logs List
+            const updatedLogs = await getTaskTimeLogsForOrder(job.id);
+            setLaborLogs(updatedLogs);
         } else {
-            alert(`Fallo en el guardado: ${result.error}`);
+            alert(`Error al finalizar: ${result.message}`);
         }
         setIsFinishing(false);
+
     };
 
     const handleAdvancePhase = async () => {
         if (!job) return;
 
-        if (window.confirm("¿Avanzar a la siguiente fase? El temporizador actual se detendrá automáticamente.")) {
-            // 1. Auto-Stop Timer
-            if (timer) {
-                await finishTimer();
+        // Sequence: intake -> assigned -> in_progress -> disassembly -> bodywork -> paint -> admin_close
+        const order: OTStatus[] = ['intake', 'assigned', 'in_progress', 'disassembly', 'bodywork', 'paint', 'admin_close'];
+        const currentIdx = order.indexOf(job.status || 'intake');
+
+        if (currentIdx !== -1 && currentIdx < order.length - 1) {
+            const next = order[currentIdx + 1];
+
+            if (next === 'admin_close') {
+                setShowPreClose(true);
+                return;
             }
 
-            // 2. Advance Status
-            const order = ['reception', 'disassembly', 'bodywork', 'paint', 'finished'];
-            const currentIdx = order.indexOf(job.status || 'reception');
-            if (currentIdx !== -1 && currentIdx < order.length - 1) {
-                const next = order[currentIdx + 1];
-                await updateWorkOrderStatus(job.id, next as any);
-                setJob({ ...job, status: next as any });
-                // Reset phase selector to next logical phase
-                const nextPhaseMap: Record<string, string> = { 'disassembly': 'disassembly', 'bodywork': 'bodywork', 'paint': 'paint' };
-                if (nextPhaseMap[next]) setSelectedPhase(nextPhaseMap[next] as MandatoryPhase);
+            if (window.confirm(`¿Avanzar a la siguiente fase (${next})?`)) {
+                if (timer) await finishTimer();
+                const res = await transitionWorkOrder(job.id, next);
+                if (res.success) {
+                    setJob({ ...job, status: next });
+                } else {
+                    alert(res.error);
+                }
             }
+        }
+    };
+
+    const handleConfirmClose = async () => {
+        if (!job) return;
+        if (timer) await finishTimer();
+
+        const res = await transitionWorkOrder(job.id, 'closed');
+        if (res.success) {
+            setJob({ ...job, status: 'closed' });
+            setShowPreClose(false);
+            alert("Expediente cerrado correctamente.");
+        } else {
+            alert(res.error);
         }
     };
 
@@ -310,12 +374,14 @@ const ExpedienteDetail: React.FC = () => {
 
     const getStatusLabel = (status: string) => {
         const map: Record<string, string> = {
-            reception: 'Recepción',
+            intake: 'Recepción',
+            assigned: 'Asignado',
+            in_progress: 'En Progreso',
             disassembly: 'Desmontaje',
             bodywork: 'Chapa/Mec',
             paint: 'Pintura',
             admin_close: 'Cierre Adm.',
-            finished: 'Listo'
+            closed: 'Cerrado'
         };
         return map[status] || status;
     };
@@ -341,7 +407,7 @@ const ExpedienteDetail: React.FC = () => {
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">FASE ACTUAL:</span>
                             <span className="bg-slate-900 text-white px-3 py-1 rounded text-xs font-black uppercase">{getStatusLabel(job.status)}</span>
                         </div>
-                        {job.status !== 'finished' && job.status !== 'closed' && (
+                        {job.status !== 'closed' && (
                             <button
                                 onClick={handleAdvancePhase}
                                 className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2"
@@ -415,52 +481,143 @@ const ExpedienteDetail: React.FC = () => {
                                         <p className="font-black text-sm text-indigo-600">{job.requestAppraisal ? 'SÍ' : 'NO'}</p>
                                     </div>
                                 </div>
+
+                                {/* AI EXTRACTION STATUS (NEW) */}
+                                {extractionJobs.length > 0 && (
+                                    <div className="bg-indigo-50 rounded-3xl p-8 border border-indigo-100 shadow-sm space-y-4">
+                                        <div className="flex justify-between items-center">
+                                            <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest">Extracción de Datos AI</h3>
+                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${extractionJobs[0].status === 'completed' ? 'bg-emerald-100 text-emerald-600' :
+                                                extractionJobs[0].status === 'failed' ? 'bg-red-100 text-red-600' :
+                                                    'bg-indigo-200 text-indigo-600 animate-pulse'
+                                                }`}>
+                                                {extractionJobs[0].status}
+                                            </span>
+                                        </div>
+
+                                        {extractionJobs[0].status === 'completed' && (
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-xs font-medium text-slate-600">Se han extraído datos de la peritación. ¿Deseas aplicarlos a la facturación?</p>
+                                                <button
+                                                    disabled={processingAi}
+                                                    onClick={async () => {
+                                                        setProcessingAi(true);
+                                                        const success = await processExtractionResults(extractionJobs[0].id);
+                                                        if (success) {
+                                                            alert("Datos aplicados correctamente.");
+                                                            // Reload data or increment a refresh counter
+                                                            window.location.reload();
+                                                        }
+                                                        setProcessingAi(false);
+                                                    }}
+                                                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md"
+                                                >
+                                                    {processingAi ? 'PROCESANDO...' : 'APLICAR DATOS'}
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {extractionJobs[0].status === 'pending' && (
+                                            <p className="text-xs font-bold text-indigo-600">El motor de IA está analizando los documentos. Por favor, espera...</p>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="lg:col-span-1 bg-slate-900 rounded-[40px] p-8 text-white shadow-2xl flex flex-col justify-between relative overflow-hidden ring-4 ring-brand-500/20">
                                 <div className="absolute top-0 right-0 p-8 opacity-5">
                                     <svg className="w-40 h-40" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" /></svg>
                                 </div>
-                                <div className="space-y-8 relative z-10">
+                                <div className="space-y-6 relative z-10">
                                     <div className="flex justify-between items-center border-b border-white/10 pb-4">
-                                        <h3 className="text-[10px] font-black text-brand-400 uppercase tracking-[0.3em]">Resumen Financiero</h3>
+                                        <h3 className="text-[10px] font-black text-brand-400 uppercase tracking-[0.3em]">Rentabilidad Real</h3>
                                         <div className="text-right">
-                                            <p className="text-[10px] text-slate-400 font-bold uppercase">Coste Hora Taller</p>
-                                            <p className="text-white font-mono font-bold">{workshopRate.toFixed(2)} €/h</p>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase">Coste/Hora</p>
+                                            <p className="text-white font-mono font-bold text-xs">{workshopRate.toFixed(2)} €</p>
                                         </div>
                                     </div>
 
-                                    <div>
-                                        <p className="text-slate-500 text-xs font-bold uppercase mb-1">Total Horas Registradas</p>
-                                        <p className="text-5xl font-black tabular-nums tracking-tighter text-white">
-                                            {(laborLogs.reduce((acc, l) => acc + (l.duration_minutes || 0), 0) / 60).toFixed(2)} <span className="text-lg text-slate-500">h</span>
-                                        </p>
-                                    </div>
-
-                                    <div>
-                                        <p className="text-slate-500 text-xs font-bold uppercase mb-1">Coste Real Taller (MO)</p>
-                                        <p className="text-4xl font-black tabular-nums tracking-tighter text-emerald-400 bg-emerald-500/10 inline-block px-4 py-2 rounded-lg border border-emerald-500/20">
-                                            €{laborLogs.reduce((acc, l) => acc + (l.calculated_labor_cost || 0), 0).toFixed(2)}
-                                        </p>
-                                        <p className="text-[10px] text-emerald-600 mt-2 font-bold">Calculation: Hours × {workshopRate} €/h</p>
-                                    </div>
-
-                                    <div className="pt-6 border-t border-white/10">
-                                        <div className="flex justify-between items-end">
-                                            <div>
-                                                <p className="text-slate-500 text-xs font-bold uppercase">Estimación Inicial</p>
-                                                <p className="text-xl font-bold text-slate-300">€{job.totalAmount?.toFixed(2) || '0.00'}</p>
+                                    <div className="space-y-4">
+                                        {/* Financial Summary Card */}
+                                        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-6">
+                                            <div className="grid grid-cols-2 gap-6 mb-6 pb-6 border-b border-white/10">
+                                                <div>
+                                                    <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Ingresos</p>
+                                                    <p className="text-2xl font-black text-white">€{job.totalAmount?.toFixed(2) || '0.00'}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Gastos</p>
+                                                    <p className="text-2xl font-black text-rose-400">
+                                                        €{(
+                                                            laborLogs.reduce((acc, l) => {
+                                                                const s = l.duration_seconds || (l.ended_at ? Math.floor((new Date(l.ended_at).getTime() - new Date(l.started_at).getTime()) / 1000) : 0);
+                                                                return acc + (s / 3600 * workshopRate);
+                                                            }, 0) +
+                                                            purchaseLines.reduce((acc, l) => acc + (l.total_amount || 0), 0)
+                                                        ).toFixed(2)}
+                                                    </p>
+                                                </div>
                                             </div>
-                                            <div className="text-right">
-                                                <p className="text-slate-500 text-xs font-bold uppercase">Margen MO</p>
+
+                                            <div className="space-y-2 mb-6">
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <p className="text-slate-400 font-bold uppercase">Mano de Obra (Real)</p>
+                                                    <p className="text-slate-300 font-mono">
+                                                        €{laborLogs.reduce((acc, l) => {
+                                                            const s = l.duration_seconds || (l.ended_at ? Math.floor((new Date(l.ended_at).getTime() - new Date(l.started_at).getTime()) / 1000) : 0);
+                                                            return acc + (s / 3600 * workshopRate);
+                                                        }, 0).toFixed(2)}
+                                                    </p>
+                                                </div>
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <p className="text-slate-400 font-bold uppercase">Materiales / Recambios</p>
+                                                    <p className="text-slate-300 font-mono">
+                                                        €{purchaseLines.reduce((acc, l) => acc + (l.total_amount || 0), 0).toFixed(2)}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-2">
+                                                <p className="text-brand-400 text-[10px] font-black uppercase tracking-widest mb-2">Resultado Final (Beneficio)</p>
                                                 {(() => {
-                                                    const realCost = laborLogs.reduce((acc, l) => acc + (l.calculated_labor_cost || 0), 0);
-                                                    // Assuming totalAmount includes parts, this logic is simplistic. 
-                                                    // Ideally we filter lines for 'Labor' type. But for now compare to total or 0.
-                                                    // Let's just show Deviation.
-                                                    return <p className="text-xl font-bold text-slate-300">--</p>;
+                                                    const laborCost = laborLogs.reduce((acc, l) => {
+                                                        const s = l.duration_seconds || (l.ended_at ? Math.floor((new Date(l.ended_at).getTime() - new Date(l.started_at).getTime()) / 1000) : 0);
+                                                        return acc + (s / 3600 * workshopRate);
+                                                    }, 0);
+                                                    const partsCost = purchaseLines.reduce((acc, l) => acc + (l.total_amount || 0), 0);
+                                                    const revenue = job.totalAmount || 0;
+                                                    const profit = revenue - laborCost - partsCost;
+                                                    const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+
+                                                    return (
+                                                        <div className="flex items-end justify-between">
+                                                            <p className={`text-5xl font-black tabular-nums tracking-tighter ${profit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                                                                €{profit.toFixed(2)}
+                                                            </p>
+                                                            <div className={`px-3 py-1 rounded-full font-black text-xs ${profit >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                                                                {margin.toFixed(1)}% MARGEN
+                                                            </div>
+                                                        </div>
+                                                    );
                                                 })()}
                                             </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-6 border-t border-white/10 flex justify-between">
+                                        <div>
+                                            <p className="text-slate-500 text-[10px] font-black uppercase">Horas Reales</p>
+                                            <p className="text-lg font-black text-white">
+                                                {(laborLogs.reduce((acc, l) => {
+                                                    const seconds = l.duration_seconds ||
+                                                        (l.ended_at ? Math.floor((new Date(l.ended_at).getTime() - new Date(l.started_at).getTime()) / 1000) : 0);
+                                                    return acc + seconds;
+                                                }, 0) / 3600).toFixed(2)}h
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-slate-500 text-[10px] font-black uppercase">Eficiencia</p>
+                                            <p className="text-lg font-black text-white">Altísima</p>
                                         </div>
                                     </div>
                                 </div>
@@ -640,7 +797,6 @@ const ExpedienteDetail: React.FC = () => {
                         </div>
                     </div>
                 )}
-
                 {activeTab === 'docs' && (
                     <div className="flex-1 p-8 md:p-12 animate-fade-in">
                         <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-8 border-b pb-3">
@@ -1028,16 +1184,82 @@ const ExpedienteDetail: React.FC = () => {
                                                 INICIAR SESIÓN
                                             </button>
                                         ) : (
-                                            <button
-                                                onClick={finishTimer}
-                                                disabled={isFinishing}
-                                                className="flex-1 bg-red-600 hover:bg-red-500 text-white py-5 rounded-2xl font-black shadow-lg disabled:opacity-50"
-                                            >
-                                                {isFinishing ? 'Guardando...' : 'Finalizar'}
-                                            </button>
+                                            <>
+                                                <button
+                                                    onClick={timer.isPaused ? resumeTimer : pauseTimer}
+                                                    className={`flex-1 text-white py-5 rounded-2xl font-black shadow-lg transition-all ${timer.isPaused ? 'bg-orange-500 hover:bg-orange-400' : 'bg-slate-700 hover:bg-slate-600'
+                                                        }`}
+                                                >
+                                                    {timer.isPaused ? 'REANUDAR' : 'PAUSAR'}
+                                                </button>
+                                                <button
+                                                    onClick={finishTimer}
+                                                    disabled={isFinishing}
+                                                    className="flex-1 bg-red-600 hover:bg-red-500 text-white py-5 rounded-2xl font-black shadow-lg disabled:opacity-50"
+                                                >
+                                                    {isFinishing ? 'Guardando...' : 'Finalizar'}
+                                                </button>
+                                            </>
                                         )}
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                        <div className="flex-1 p-8 overflow-y-auto max-h-[800px]">
+                            <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 border-b pb-2">Historial de Trabajo</h2>
+                            <div className="space-y-4">
+                                {laborLogs.length === 0 ? (
+                                    <p className="text-slate-400 text-sm italic py-4">No hay registros de tiempo.</p>
+                                ) : (
+                                    laborLogs.map((log) => (
+                                        <div key={log.id} className="bg-white border border-slate-100 p-4 rounded-xl flex items-center justify-between shadow-sm hover:shadow-md transition-all">
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className={`w-2 h-2 rounded-full ${!log.ended_at ? 'bg-orange-500 animate-pulse' :
+                                                        log.status === 'completed' ? 'bg-emerald-500' : 'bg-slate-300'
+                                                        }`} />
+                                                    <p className="font-bold text-slate-800 text-sm">
+                                                        {log.employees?.full_name || 'Desconocido'}
+                                                    </p>
+                                                    <span className="text-[10px] font-black uppercase bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
+                                                        {log.work_order_tasks?.task_type || 'N/A'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-slate-400">
+                                                    Iniciado: {new Date(log.started_at).toLocaleString()}
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="font-mono font-black text-lg text-slate-700">
+                                                    {(() => {
+                                                        const seconds = log.duration_seconds ||
+                                                            (log.ended_at ? Math.floor((new Date(log.ended_at).getTime() - new Date(log.started_at).getTime()) / 1000) : 0);
+
+                                                        if (seconds > 0) {
+                                                            const h = Math.floor(seconds / 3600);
+                                                            const m = Math.floor((seconds % 3600) / 60);
+                                                            return `${h}h ${m}m`;
+                                                        }
+                                                        return !log.ended_at ? 'En curso' : 'Calculating...';
+                                                    })()}
+                                                </p>
+                                                {(() => {
+                                                    const seconds = log.duration_seconds ||
+                                                        (log.ended_at ? Math.floor((new Date(log.ended_at).getTime() - new Date(log.started_at).getTime()) / 1000) : 0);
+
+                                                    if (seconds > 0 && workshopRate > 0) {
+                                                        return (
+                                                            <p className="text-[10px] font-bold text-emerald-600">
+                                                                {((seconds / 3600) * workshopRate).toFixed(2)} €
+                                                            </p>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     </div>
@@ -1049,6 +1271,13 @@ const ExpedienteDetail: React.FC = () => {
                     </div>
                 )}
             </div>
+            {showPreClose && (
+                <PreCloseModal
+                    workOrderId={job.id}
+                    onClose={() => setShowPreClose(false)}
+                    onConfirm={handleConfirmClose}
+                />
+            )}
         </div >
     );
 };

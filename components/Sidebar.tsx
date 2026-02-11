@@ -60,6 +60,7 @@ const ShieldIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" strok
 const ArchiveIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" /><line x1="10" y1="12" x2="14" y2="12" /></svg></IconWrapper>;
 const LinkIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg></IconWrapper>;
 const HistoryIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg></IconWrapper>;
+const ClockIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg></IconWrapper>;
 const EntryIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="12" y1="18" x2="12" y2="12" /><line x1="9" y1="15" x2="15" y2="15" /></svg></IconWrapper>;
 const KanbanIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18" /><path d="M15 3v18" /></svg></IconWrapper>;
 const CalculatorIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" /><line x1="8" y1="6" x2="16" y2="6" /><line x1="16" y1="14" x2="16" y2="18" /><path d="M16 10h.01" /><path d="M12 10h.01" /><path d="M8 10h.01" /><path d="M12 14h.01" /><path d="M8 14h.01" /><path d="M12 18h.01" /><path d="M8 18h.01" /></svg></IconWrapper>;
@@ -67,6 +68,7 @@ const ChartIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke
 const UserIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg></IconWrapper>;
 const ExpertIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg></IconWrapper>; // Modified User Group / Badge idea
 const QueueIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" ry="1" /><path d="M9 12h6" /><path d="M9 16h6" /></svg></IconWrapper>;
+const PurchaseIcon = () => <IconWrapper><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" /></svg></IconWrapper>;
 
 const NotificationCenter = React.lazy(() => import('./NotificationCenter'));
 
@@ -133,16 +135,23 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
           <nav className="flex-1 px-4 py-2 overflow-y-auto custom-scrollbar relative">
             {isClient ? (
               <>
-                <SectionHeader label="Portal del Taller" />
+                <SectionHeader label="Taller" />
                 <NavItem to="/" icon={<DashboardIcon />} label="Mis Reparaciones" active={location.pathname === '/'} isClient={true} />
                 <NavItem to="/kanban" icon={<KanbanIcon />} label="Tablero de Progreso" active={location.pathname === '/kanban'} isClient={true} />
-                <NavItem to="/contacts" icon={<ContactIcon />} label="Mis Clientes" active={location.pathname === '/contacts'} isClient={true} />
-                <NavItem to="/history-ot" icon={<HistoryIcon />} label="Historial Reparaciones" active={location.pathname === '/history-ot'} isClient={true} />
 
-                <NavItem to="/analytics" icon={<ChartIcon />} label="Análisis / Informes" active={location.pathname === '/analytics'} isClient={true} />
+                <SectionHeader label="Gestión" />
+                <NavItem to="/contacts" icon={<ContactIcon />} label="Mis Clientes" active={location.pathname === '/contacts'} isClient={true} />
+
+                <NavItem to="/purchases" icon={<PurchaseIcon />} label="Importar Compras" active={location.pathname === '/purchases'} isClient={true} />
+                <NavItem to="/history-ot" icon={<HistoryIcon />} label="Historial OT" active={location.pathname === '/history-ot'} isClient={true} />
+
+                <SectionHeader label="Finanzas" />
                 <NavItem to="/calculator" icon={<CalculatorIcon />} label="Calculadora de Costes" active={location.pathname === '/calculator'} isClient={true} />
-                <NavItem to="/client-area" icon={<UserIcon />} label="Mi Taller (Perfil)" active={location.pathname === '/client-area'} isClient={true} />
+                <NavItem to="/analytics" icon={<ChartIcon />} label="Análisis / Informes" active={location.pathname === '/analytics'} isClient={true} />
+
+                <SectionHeader label="Estrategia" />
                 <NavItem to="/crm" icon={<CrmIcon />} label="CRM / Estrategia" active={location.pathname === '/crm'} isClient={true} />
+                <NavItem to="/client-area" icon={<UserIcon />} label="Mi Taller (Perfil)" active={location.pathname === '/client-area'} isClient={true} />
               </>
             ) : (
               <>

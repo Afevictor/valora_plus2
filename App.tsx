@@ -24,8 +24,10 @@ import LandingPage from './components/LandingPage';
 import ClientAnalysisPortal from './components/ClientAnalysisPortal';
 import Subscription from './components/Subscription';
 import Auth from './components/Auth';
-import AppraisersManagement from './components/AppraisersManagement';
 import AdminValuationsQueue from './components/AdminValuationsQueue';
+import AppraisersManagement from './components/AppraisersManagement';
+import PurchaseImporter from './components/PurchaseImporter';
+import AttendanceTracker from './components/AttendanceTracker';
 import { supabase, checkIsWorkshopAuthEmail } from './services/supabaseClient';
 import { AppRole } from './types';
 
@@ -60,6 +62,8 @@ const App = () => {
       '/history-claims': 'Historial Siniestros',
       '/analytics': 'Análisis / Informes',
       '/calculator': 'Calculadora Costes',
+      '/purchases': 'Importador de Compras',
+      '/attendance': 'Control Horario',
       '/bitrix-config': 'Conexión Bitrix24',
       '/tutorials': 'Academia',
       '/client-area': 'Mi Taller',
@@ -271,6 +275,16 @@ const App = () => {
                 <Route path="/calculator" element={
                   <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
                     <CostCalculator />
+                  </ProtectedRoleRoute>
+                } />
+                <Route path="/purchases" element={
+                  <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
+                    <PurchaseImporter />
+                  </ProtectedRoleRoute>
+                } />
+                <Route path="/attendance" element={
+                  <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
+                    <AttendanceTracker />
                   </ProtectedRoleRoute>
                 } />
                 <Route path="/client-area" element={

@@ -12,6 +12,7 @@ import {
     supabase
 } from '../services/supabaseClient';
 import { analyzeProfitabilityDocument } from '../services/geminiService';
+import PreCloseModal from './PreCloseModal';
 
 const COLUMNS: { id: RepairStage; title: string; color: string }[] = [
     { id: 'reception', title: 'Recepción / Pendiente', color: 'border-gray-300' },
@@ -41,6 +42,10 @@ const RepairKanban: React.FC = () => {
     const [isFinalizing, setIsFinalizing] = useState(false);
     const closingFileInputRef = useRef<HTMLInputElement>(null);
 
+    // Estado Module E: Pre-Close Modal
+    const [isPreCloseModalOpen, setIsPreCloseModalOpen] = useState(false);
+    const [preCloseJob, setPreCloseJob] = useState<RepairJob | null>(null);
+
     useEffect(() => {
         fetchJobs();
     }, []);
@@ -69,10 +74,17 @@ const RepairKanban: React.FC = () => {
         const jobToUpdate = jobs.find(j => j.id === draggedJobId);
         if (!jobToUpdate) return;
 
-        // ACTIVADOR DE FLUJO DE CIERRE OBLIGATORIO
-        if (targetStage === 'finished') {
+        // ACTIVADOR DE FLUJO DE CIERRE OBLIGATORIO (Valuation Report) -> admin_close
+        if (targetStage === 'admin_close') {
             setClosingJob(jobToUpdate);
             setIsClosingModalOpen(true);
+            return;
+        }
+
+        // ACTIVADOR MODULE E (Pre-Close Profitability Check) -> finished
+        if (targetStage === 'finished') {
+            setPreCloseJob(jobToUpdate);
+            setIsPreCloseModalOpen(true);
             return;
         }
 
@@ -155,12 +167,12 @@ const RepairKanban: React.FC = () => {
                 }
             }
 
-            // 3. Actualizar Estado a Finalizado en DB
-            const statusSuccess = await updateWorkOrderStatus(closingJob.id, 'finished');
+            // 3. Actualizar Estado a Admin Close en DB
+            const statusSuccess = await updateWorkOrderStatus(closingJob.id, 'admin_close');
             if (!statusSuccess) throw new Error("Fallo en la actualización de estado en la base de datos.");
 
             // 4. Actualizar Estado Local
-            setJobs(prev => prev.map(j => j.id === closingJob.id ? { ...j, status: 'finished' } : j));
+            setJobs(prev => prev.map(j => j.id === closingJob.id ? { ...j, status: 'admin_close' } : j));
 
             // Feedback de Éxito
             alert("Expediente cerrado correctamente. El informe de peritación ya está disponible en la pestaña Docs.");
@@ -177,6 +189,21 @@ const RepairKanban: React.FC = () => {
         } finally {
             setIsFinalizing(false);
         }
+    };
+
+    const handlePreCloseConfirm = async () => {
+        if (!preCloseJob) return;
+
+        // Finalizar Cierre Real
+        const statusSuccess = await updateWorkOrderStatus(preCloseJob.id, 'finished');
+        if (!statusSuccess) {
+            alert("Fallo al cerrar expediente.");
+            return;
+        }
+
+        setJobs(prev => prev.map(j => j.id === preCloseJob.id ? { ...j, status: 'finished' } : j));
+        setIsPreCloseModalOpen(false);
+        setPreCloseJob(null);
     };
 
     const handleDeleteJob = async (e: React.MouseEvent, jobId: string) => {
@@ -361,16 +388,16 @@ const RepairKanban: React.FC = () => {
             {/* MODAL DE FLUJO DE CIERRE */}
             {isClosingModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200">
-                        <div className="bg-slate-50 p-8 border-b border-slate-100">
+                    <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
+                        <div className="bg-slate-50 p-6 border-b border-slate-100">
                             <div className="w-16 h-16 bg-green-100 text-green-600 rounded-3xl flex items-center justify-center mb-6 mx-auto">
                                 <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             </div>
-                            <h2 className="text-2xl font-black text-slate-800 text-center uppercase tracking-tighter">¿Listo para Entrega?</h2>
+                            <h2 className="text-2xl font-black text-slate-800 text-center uppercase tracking-tighter">¿Cierre Administrativo?</h2>
                             <p className="text-slate-500 text-center mt-2 text-sm">Por favor, suba el <strong>Informe de Peritación de la Aseguradora</strong> para el análisis de rentabilidad final antes de cerrar este expediente.</p>
                         </div>
 
-                        <div className="p-8 space-y-6">
+                        <div className="p-6 space-y-5">
                             <div
                                 onClick={() => !isFinalizing && closingFileInputRef.current?.click()}
                                 className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all ${closingFile ? 'bg-green-50 border-green-300' : 'bg-slate-50 border-slate-200 hover:border-brand-400 hover:bg-white'} ${isFinalizing ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -420,14 +447,26 @@ const RepairKanban: React.FC = () => {
                                             <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                                             <span>Procesando...</span>
                                         </>
-                                    ) : "Finalizar Entrega"}
+                                    ) : "Confirmar Cierre"}
                                 </button>
                             </div>
                         </div>
                     </div>
                 </div>
             )}
-        </div>
+
+
+            {/* MODULE E: PRE-CLOSE MODAL */}
+            {
+                isPreCloseModalOpen && preCloseJob && (
+                    <PreCloseModal
+                        workOrderId={preCloseJob.id}
+                        onClose={() => { setIsPreCloseModalOpen(false); setPreCloseJob(null); setDraggedJobId(null); }}
+                        onConfirm={handlePreCloseConfirm}
+                    />
+                )
+            }
+        </div >
     );
 };
 
