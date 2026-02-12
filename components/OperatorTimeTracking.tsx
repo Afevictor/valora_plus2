@@ -268,8 +268,8 @@ const OperatorTimeTracking: React.FC = () => {
                             <div className="mb-8">
                                 <h3 className="text-3xl font-black mb-1 leading-tight">{activeLog.work_order_tasks?.task_type || 'Tarea...'}</h3>
                                 <div className="flex items-center gap-2 text-emerald-100 font-bold text-sm">
-                                    <span className="bg-white/20 px-2 py-0.5 rounded text-[10px]">{activeLog.work_orders?.plate || 'WO'}</span>
-                                    <span>{activeLog.work_orders?.vehicle || 'Vehículo'}</span>
+                                    <span className="bg-white/20 px-2 py-0.5 rounded text-[10px]">{activeLog.work_order_tasks?.work_orders?.plate || 'WO'}</span>
+                                    <span>{activeLog.work_order_tasks?.work_orders?.vehicle || 'Vehículo'}</span>
                                 </div>
                             </div>
 
@@ -363,7 +363,7 @@ const OperatorTimeTracking: React.FC = () => {
                                     <div className="flex justify-between items-center">
                                         <div className="flex-1 min-w-0 pr-4">
                                             <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-[10px] font-black text-brand-600 bg-brand-50 px-2 py-0.5 rounded uppercase tracking-tighter">WO-{task.work_orders?.id.slice(-5).toUpperCase() || 'NEW'}</span>
+                                                <span className="text-[10px] font-black text-brand-600 bg-brand-50 px-2 py-0.5 rounded uppercase tracking-tighter">WO-{task.work_order_id?.slice(-5).toUpperCase() || 'NEW'}</span>
                                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Est: {task.estimated_hours || '---'}h</span>
                                             </div>
                                             <h4 className="font-black text-slate-800 text-base leading-tight truncate">{task.task_type}</h4>
