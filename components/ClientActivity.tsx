@@ -278,13 +278,11 @@ const ClientActivity: React.FC<ClientActivityProps> = ({ client, onClose, onEdit
                                                                 const visualEvidence = files.filter(f =>
                                                                     (f.mime_type?.startsWith('image/') || f.mime_type?.startsWith('video/'))
                                                                 );
-                                                                const valuationReports = files.filter(f => f.category === 'Valuation Report');
                                                                 const systemDocs = files.filter(f =>
-                                                                    f.mime_type === 'application/pdf' && f.category !== 'Valuation Report'
+                                                                    f.mime_type === 'application/pdf'
                                                                 );
                                                                 const otherDocs = files.filter(f =>
                                                                     !visualEvidence.find(v => v.id === f.id) &&
-                                                                    !valuationReports.find(v => v.id === f.id) &&
                                                                     !systemDocs.find(v => v.id === f.id)
                                                                 );
 
@@ -413,8 +411,8 @@ const ClientActivity: React.FC<ClientActivityProps> = ({ client, onClose, onEdit
                                                                                 </div>
                                                                             )}
 
-                                                                            {/* System Docs & Valuation */}
-                                                                            {(systemDocs.length > 0 || valuationReports.length > 0) && (
+                                                                            {/* System Docs */}
+                                                                            {systemDocs.length > 0 && (
                                                                                 <div>
                                                                                     <div className="flex items-center gap-3 mb-5">
                                                                                         <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
@@ -422,10 +420,10 @@ const ClientActivity: React.FC<ClientActivityProps> = ({ client, onClose, onEdit
                                                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                                                                             </svg>
                                                                                         </div>
-                                                                                        <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest">DOCUMENTS ({systemDocs.length + valuationReports.length})</h4>
+                                                                                        <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest">DOCUMENTS ({systemDocs.length})</h4>
                                                                                     </div>
                                                                                     <div className="space-y-3">
-                                                                                        {[...valuationReports, ...systemDocs].map(file => (
+                                                                                        {systemDocs.map(file => (
                                                                                             <div key={file.id} className="bg-white rounded-3xl border border-blue-100 p-4 transition-all hover:shadow-md flex items-center justify-between">
                                                                                                 <div className="flex items-center gap-4">
                                                                                                     <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">

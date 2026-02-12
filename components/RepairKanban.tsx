@@ -1,17 +1,14 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RepairJob, RepairStage, BusinessLine } from '../types';
 import { Link, useNavigate } from 'react-router-dom';
 import {
     getWorkOrdersFromSupabase,
     updateWorkOrderStatus,
     deleteWorkOrder,
-    uploadWorkshopFile,
-    saveFileMetadata,
-    updateWorkOrderFinancials,
+    transitionWorkOrder,
     supabase
 } from '../services/supabaseClient';
-import { analyzeProfitabilityDocument } from '../services/geminiService';
 import PreCloseModal from './PreCloseModal';
 
 const COLUMNS: { id: RepairStage; title: string; color: string }[] = [
@@ -35,12 +32,7 @@ const RepairKanban: React.FC = () => {
     const [viewMode, setViewMode] = useState<ViewMode>('kanban');
     const [lineFilter, setLineFilter] = useState<LineFilter>('all');
 
-    // Estado de Flujo de Cierre
-    const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
-    const [closingJob, setClosingJob] = useState<RepairJob | null>(null);
-    const [closingFile, setClosingFile] = useState<File | null>(null);
-    const [isFinalizing, setIsFinalizing] = useState(false);
-    const closingFileInputRef = useRef<HTMLInputElement>(null);
+
 
     // Estado Module E: Pre-Close Modal
     const [isPreCloseModalOpen, setIsPreCloseModalOpen] = useState(false);
@@ -74,130 +66,33 @@ const RepairKanban: React.FC = () => {
         const jobToUpdate = jobs.find(j => j.id === draggedJobId);
         if (!jobToUpdate) return;
 
-        // ACTIVADOR DE FLUJO DE CIERRE OBLIGATORIO (Valuation Report) -> admin_close
-        if (targetStage === 'admin_close') {
-            setClosingJob(jobToUpdate);
-            setIsClosingModalOpen(true);
-            return;
-        }
-
-        // ACTIVADOR MODULE E (Pre-Close Profitability Check) -> finished
-        if (targetStage === 'finished') {
+        // ACTIVADOR MODULE E (Pre-Close Profitability Check)
+        // Solo cuando se mueve a 'finished' DESDE 'admin_close'
+        if (targetStage === 'finished' && jobToUpdate.status === 'admin_close') {
             setPreCloseJob(jobToUpdate);
             setIsPreCloseModalOpen(true);
             return;
         }
 
         // Transición Normal
-        setJobs((prevJobs) =>
-            prevJobs.map((job) =>
-                job.id === draggedJobId ? { ...job, status: targetStage } : job
-            )
-        );
-        await updateWorkOrderStatus(draggedJobId, targetStage);
+        const res = await transitionWorkOrder(draggedJobId, targetStage);
+        if (res.success) {
+            setJobs(prev => prev.map(j => j.id === draggedJobId ? { ...j, status: targetStage } : j));
+        } else {
+            alert(res.error || "Error al actualizar el estado");
+        }
         setDraggedJobId(null);
     };
 
-    const finalizeClosure = async () => {
-        if (!closingJob || !closingFile) return;
-        setIsFinalizing(true);
 
-        try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error("Sesión expirada. Por favor, inicie sesión de nuevo.");
-
-            // 1. Subir Informe de Peritación
-            const timestamp = Date.now();
-            const safeFileName = closingFile.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
-            const filename = `PERITACION_FINAL_${timestamp}_${safeFileName}`;
-
-            const storagePath = `${user.id}/${closingJob.id}/Informes_Peritacion/${filename}`;
-
-            const uploadedPath = await uploadWorkshopFile(closingFile, 'documents', storagePath);
-
-            if (!uploadedPath) throw new Error("Fallo en la subida al almacenamiento.");
-
-            // 2. Guardar Metadatos en la base de datos
-            const metadataSuccess = await saveFileMetadata({
-                workshop_id: user.id,
-                expediente_id: closingJob.id,
-                original_filename: closingFile.name,
-                category: 'Valuation Report',
-                storage_path: uploadedPath,
-                bucket: 'documents',
-                mime_type: closingFile.type,
-                size_bytes: closingFile.size
-            });
-
-            if (!metadataSuccess) throw new Error("Fallo en el registro de metadatos.");
-
-            // 2.5 Extracción Automática de Rentabilidad (PDFs e Imágenes)
-            if (closingFile.type === 'application/pdf' || closingFile.type.startsWith('image/')) {
-                try {
-                    // Convertir a Base64
-                    const base64Data = await new Promise<string>((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.readAsDataURL(closingFile);
-                        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-                        reader.onerror = reject;
-                    });
-
-                    console.log("[DEBUG] Base64 Length:", base64Data.length);
-                    console.log("[DEBUG] File Type:", closingFile.type);
-
-                    // Analizar con Gemini
-                    const analysis = await analyzeProfitabilityDocument(base64Data, closingFile.type);
-                    console.log("[DEBUG] AI Analysis Result:", analysis);
-
-                    // Si encontramos un valor, actualizamos
-                    if (analysis.financials.total_gross > 0) {
-                        await updateWorkOrderFinancials(closingJob.id, {
-                            insurance_payment: analysis.financials.total_gross,
-                            insurance_payment_status: 'analyzed'
-                        });
-                        console.log("Rentabilidad extraída con éxito:", analysis.financials.total_gross);
-                    } else {
-                        console.warn("ValoraAI: No se encontró importe. Detalles:", analysis.analysis);
-                        await updateWorkOrderFinancials(closingJob.id, {
-                            insurance_payment_status: 'failed_extraction'
-                        });
-                    }
-                } catch (extractionError) {
-                    console.warn("Fallo en la extracción automática, continuando cierre...", extractionError);
-                }
-            }
-
-            // 3. Actualizar Estado a Admin Close en DB
-            const statusSuccess = await updateWorkOrderStatus(closingJob.id, 'admin_close');
-            if (!statusSuccess) throw new Error("Fallo en la actualización de estado en la base de datos.");
-
-            // 4. Actualizar Estado Local
-            setJobs(prev => prev.map(j => j.id === closingJob.id ? { ...j, status: 'admin_close' } : j));
-
-            // Feedback de Éxito
-            alert("Expediente cerrado correctamente. El informe de peritación ya está disponible en la pestaña Docs.");
-
-            // Reset
-            setIsClosingModalOpen(false);
-            setClosingJob(null);
-            setClosingFile(null);
-            setDraggedJobId(null);
-
-        } catch (e: any) {
-            console.error("Error al cerrar:", e);
-            alert(`Error Crítico durante el cierre: ${e.message || 'Error de base de datos desconocido'}`);
-        } finally {
-            setIsFinalizing(false);
-        }
-    };
 
     const handlePreCloseConfirm = async () => {
         if (!preCloseJob) return;
 
         // Finalizar Cierre Real
-        const statusSuccess = await updateWorkOrderStatus(preCloseJob.id, 'finished');
-        if (!statusSuccess) {
-            alert("Fallo al cerrar expediente.");
+        const res = await transitionWorkOrder(preCloseJob.id, 'finished');
+        if (!res.success) {
+            alert(res.error || "Fallo al cerrar expediente.");
             return;
         }
 
@@ -385,75 +280,7 @@ const RepairKanban: React.FC = () => {
                 )}
             </div>
 
-            {/* MODAL DE FLUJO DE CIERRE */}
-            {isClosingModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
-                        <div className="bg-slate-50 p-6 border-b border-slate-100">
-                            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-3xl flex items-center justify-center mb-6 mx-auto">
-                                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            </div>
-                            <h2 className="text-2xl font-black text-slate-800 text-center uppercase tracking-tighter">¿Cierre Administrativo?</h2>
-                            <p className="text-slate-500 text-center mt-2 text-sm">Por favor, suba el <strong>Informe de Peritación de la Aseguradora</strong> para el análisis de rentabilidad final antes de cerrar este expediente.</p>
-                        </div>
 
-                        <div className="p-6 space-y-5">
-                            <div
-                                onClick={() => !isFinalizing && closingFileInputRef.current?.click()}
-                                className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all ${closingFile ? 'bg-green-50 border-green-300' : 'bg-slate-50 border-slate-200 hover:border-brand-400 hover:bg-white'} ${isFinalizing ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            >
-                                <input
-                                    ref={closingFileInputRef}
-                                    type="file"
-                                    accept=".pdf,image/*"
-                                    className="hidden"
-                                    disabled={isFinalizing}
-                                    onChange={(e) => setClosingFile(e.target.files?.[0] || null)}
-                                />
-                                {!closingFile ? (
-                                    <div className="space-y-2">
-                                        <svg className="w-10 h-10 text-slate-300 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                                        <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Seleccionar PDF o Foto</p>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center justify-center gap-3">
-                                        <div className="bg-green-600 text-white p-2 rounded-lg">
-                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                        </div>
-                                        <div className="text-left overflow-hidden">
-                                            <p className="text-sm font-bold text-green-700 truncate max-w-[180px]">{closingFile.name}</p>
-                                            <p className="text-[10px] text-green-500 uppercase font-black">Listo para Finalizar</p>
-                                        </div>
-                                        <button onClick={(e) => { e.stopPropagation(); setClosingFile(null); }} className="text-red-400 hover:text-red-600 p-1">&times;</button>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex gap-4">
-                                <button
-                                    disabled={isFinalizing}
-                                    onClick={() => { setIsClosingModalOpen(false); setClosingFile(null); setDraggedJobId(null); }}
-                                    className="flex-1 px-6 py-4 bg-white border border-slate-300 text-slate-600 rounded-2xl font-bold hover:bg-slate-50 transition-all uppercase text-xs disabled:opacity-50"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    onClick={finalizeClosure}
-                                    disabled={!closingFile || isFinalizing}
-                                    className="flex-[2] px-6 py-4 bg-slate-900 text-white rounded-2xl font-black shadow-xl hover:bg-black transition-all disabled:opacity-30 disabled:grayscale uppercase text-xs flex items-center justify-center gap-2"
-                                >
-                                    {isFinalizing ? (
-                                        <>
-                                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                            <span>Procesando...</span>
-                                        </>
-                                    ) : "Confirmar Cierre"}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
 
             {/* MODULE E: PRE-CLOSE MODAL */}

@@ -31,7 +31,7 @@ const LandingPage: React.FC<LandingPageProps> = ({
             <div className="w-11 h-11 bg-brand-600 rounded-2xl flex items-center justify-center text-white font-black shadow-lg shadow-brand-500/20 ring-4 ring-white text-xl transition-transform hover:scale-105">V+</div>
             <div className="flex flex-col">
               <span className="font-black text-lg md:text-xl tracking-tight leading-none text-slate-900">VALORA PLUS</span>
-              <span className="text-[8px] md:text-[10px] font-bold text-brand-600 tracking-[0.2em] uppercase mt-1 hidden sm:block">DMS Intelligence</span>
+              <span className="text-[8px] md:text-[10px] font-bold text-brand-600 tracking-[0.2em] uppercase mt-1 hidden sm:block">Inteligencia de Gestión</span>
             </div>
           </div>
 
@@ -212,8 +212,8 @@ const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* Footer Branding */}
       <footer className="py-20 border-t border-slate-200 text-center">
-        <p className="text-slate-400 text-xs font-black uppercase tracking-[0.5em]">VALORA PLUS • DMS INTELLIGENCE</p>
-        <p className="mt-4 text-slate-300 text-[10px] font-bold">NEXT-GENERATION AUTOMOTIVE MANAGEMENT SYSTEM</p>
+        <p className="text-slate-400 text-xs font-black uppercase tracking-[0.5em]">VALORA PLUS • INTELIGENCIA DE GESTIÓN</p>
+        <p className="mt-4 text-slate-300 text-[10px] font-bold">SISTEMA DE GESTIÓN DE TALLER DE PRÓXIMA GENERACIÓN</p>
       </footer>
     </div>
   );

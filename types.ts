@@ -446,12 +446,12 @@ export interface WorkOrderTask {
   id: string;
   workshop_id: string;
   work_order_id: string;
-  name: string;
+  task_type: string;
   description?: string;
-  category: 'mechanics' | 'electricity' | 'bodywork' | 'paint' | 'cleaning' | 'other';
-  status: 'pending' | 'in_progress' | 'on_hold' | 'finished' | 'cancelled';
+  status: 'assigned' | 'in_progress' | 'paused' | 'finished' | 'cancelled';
   estimated_hours?: number;
-  actual_hours: number;
+  actual_hours?: number;
+  employee_id?: string;
   created_at: string;
 }
 

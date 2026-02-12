@@ -56,7 +56,20 @@ const NewAppraisal: React.FC = () => {
         incident_type: 'collision',
         incident_date: new Date().toISOString().split('T')[0]
     });
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [extractionStatus, setExtractionStatus] = useState<'idle' | 'processing' | 'completed' | 'failed' | 'requires_review'>('idle');
+    const [extractionMessage, setExtractionMessage] = useState('');
+    const [extractionJobId, setExtractionJobId] = useState<string | null>(null);
+    const [extractedBilling, setExtractedBilling] = useState<any>({
+        bodywork_hours: 0,
+        paint_hours: 0,
+        bodywork_rate: 45,
+        paint_rate: 50,
+        materials_amount: 0,
+        total_estimate: 0
+    });
+    const [extractedParts, setExtractedParts] = useState<any[]>([]);
+    const [confidenceScores, setConfidenceScores] = useState<any>(null);
+    const [showReviewUI, setShowReviewUI] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [previewFile, setPreviewFile] = useState<StagedFile | null>(null);
     const [tempTicketId] = useState(`OT-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`);
@@ -163,8 +176,116 @@ const NewAppraisal: React.FC = () => {
         setStagedFiles(prev => prev.filter(f => f.id !== id));
     };
 
-    const runSmartAnalysis = async () => {
-        console.log("AI analysis disabled.");
+    const runSmartAnalysis = async (file: File) => {
+        if (!workshopOwnerId) return;
+        setExtractionStatus('processing');
+        setExtractionMessage('Analizando PDF con IA...');
+
+        try {
+            // 1. Upload file (re-using existing simplified upload logic)
+            const timestamp = Date.now();
+            const safeName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+            const filename = `${timestamp}_${safeName}`;
+            const storagePath = `${workshopOwnerId}/temp_extraction/${filename}`;
+
+            const uploadedPath = await uploadWorkshopFile(file, 'reception-files', storagePath);
+            if (!uploadedPath) throw new Error("Error subiendo el archivo para análisis.");
+
+            // 2. Save Metadata
+            const metadata = await saveFileMetadata({
+                workshop_id: workshopOwnerId,
+                expediente_id: tempTicketId,
+                original_filename: file.name,
+                category: 'Assessment PDF',
+                storage_path: uploadedPath,
+                bucket: 'reception-files',
+                mime_type: file.type,
+                size_bytes: file.size
+            });
+
+            if (!metadata) throw new Error("Error guardando metadatos del archivo.");
+
+            // 3. Create Job
+            const jobResult = await createExtractionJob({
+                work_order_id: null, // Standalone extraction before submit
+                file_id: metadata.id,
+                status: 'pending'
+            });
+
+            if (!jobResult.success || !jobResult.job) throw new Error(jobResult.error || "Error creando trabajo de IA.");
+            setExtractionJobId(jobResult.job.id);
+
+            // 4. Trigger & Wait (Polled or Sync response)
+            const triggerResult = await triggerExtractionProcess(jobResult.job.id);
+            if (!triggerResult.success) throw new Error(triggerResult.error || "Error procesando IA.");
+
+            // 5. Apply Results
+            const resultData = triggerResult.data;
+            const data = resultData?.data;
+            const status = resultData?.status;
+            const scores = resultData?.confidence_scores;
+
+            if (data) {
+                applyExtractionResults(data);
+                setExtractedBilling(data.labor ? { ...data.labor, materials_amount: data.materials?.paint_amount, total_estimate: data.total_estimate } : null);
+                setExtractedParts(data.materials?.parts || []);
+                setConfidenceScores(scores);
+
+                if (status === 'requires_review') {
+                    setExtractionStatus('requires_review');
+                    setExtractionMessage('Análisis completado, pero requiere revisión manual.');
+                    setShowReviewUI(true);
+                } else {
+                    setExtractionStatus('completed');
+                    setExtractionMessage('¡Datos extraídos y aplicados correctamente!');
+                    setTimeout(() => setExtractionStatus('idle'), 3000);
+                }
+            } else {
+                setExtractionStatus('failed');
+                setExtractionMessage('No se pudieron extraer datos del PDF.');
+            }
+
+        } catch (e: any) {
+            console.error("AI Extraction Error:", e);
+            setExtractionStatus('failed');
+            setExtractionMessage(e.message || "Error desconocido");
+        }
+    };
+
+    const applyExtractionResults = (data: any) => {
+        if (data.vehicle) {
+            setVehicleData(prev => ({
+                ...prev,
+                plate: data.vehicle.plate || prev.plate,
+                vin: data.vehicle.vin || prev.vin,
+                brand: data.vehicle.brand || prev.brand,
+                model: data.vehicle.model || prev.model,
+                year: data.vehicle.year || prev.year,
+                km: data.vehicle.km || prev.km,
+                color: data.vehicle.color || prev.color
+            }));
+        }
+        if (data.claim) {
+            setClaimData(prev => ({
+                ...prev,
+                claim_number: data.claim.claim_number || prev.claim_number,
+                incident_type: data.claim.incident_type || prev.incident_type,
+                incident_date: data.claim.incident_date || prev.incident_date
+            }));
+        }
+        if (data.labor) {
+            setExtractedBilling({
+                bodywork_hours: data.labor.bodywork_hours || 0,
+                paint_hours: data.labor.paint_hours || 0,
+                bodywork_rate: data.labor.bodywork_rate || 45,
+                paint_rate: data.labor.paint_rate || 50,
+                materials_amount: data.materials?.paint_amount || 0,
+                total_estimate: data.total_estimate || 0
+            });
+        }
+        if (data.materials?.parts) {
+            setExtractedParts(data.materials.parts);
+        }
     };
 
     const handleDirectAiScan = async (files: FileList | null) => {
@@ -190,7 +311,6 @@ const NewAppraisal: React.FC = () => {
             return;
         }
 
-        // Basic Validations (Module C)
         const cleanPlate = vehicleData.plate.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
         const plateRegex = /^[0-9]{4}[BCDFGHJKLMNPRSTVWXYZ]{3}$/;
         if (cleanPlate && !plateRegex.test(cleanPlate)) {
@@ -202,7 +322,6 @@ const NewAppraisal: React.FC = () => {
         try {
             const vehicleId = window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now();
 
-            // 1. Guardar Vehículo
             await saveVehicle({
                 id: vehicleId,
                 clientId: selectedCustomer.id,
@@ -217,7 +336,6 @@ const NewAppraisal: React.FC = () => {
                 color: vehicleData.color || 'Blanco'
             }, workshopOwnerId);
 
-            // 2. Guardar Orden de Trabajo
             const newOrder: WorkOrder = {
                 id: window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2),
                 expedienteId: tempTicketId,
@@ -228,7 +346,6 @@ const NewAppraisal: React.FC = () => {
                 entryDate: new Date().toISOString(),
                 description: repairDetails.description,
                 priority: repairDetails.priority,
-                // Module C fields
                 insurer_id: claimData.insurer_id || undefined,
                 claim_number: claimData.claim_number,
                 incident_type: claimData.incident_type,
@@ -248,7 +365,6 @@ const NewAppraisal: React.FC = () => {
             const woResult = await saveWorkOrderToSupabase(newOrder, workshopOwnerId);
             if (!woResult.success) throw new Error(`Error al guardar la orden: ${woResult.error}`);
 
-            // 3. Subir archivos
             for (const staged of stagedFiles) {
                 const timestamp = Date.now();
                 const safeName = staged.file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
@@ -269,7 +385,6 @@ const NewAppraisal: React.FC = () => {
                         size_bytes: staged.file.size
                     });
 
-                    // Trigger AI Extraction if it's a PDF (Assessment)
                     if (staged.type === 'pdf' && metadata?.id) {
                         try {
                             const jobResult = await createExtractionJob({
@@ -279,7 +394,6 @@ const NewAppraisal: React.FC = () => {
                             });
                             if (jobResult.success && jobResult.job) {
                                 await triggerExtractionProcess(jobResult.job.id);
-                                console.log("AI Extraction triggered for:", staged.file.name);
                             }
                         } catch (aiErr) {
                             console.warn("AI Trigger failed (non-critical):", aiErr);
@@ -288,8 +402,6 @@ const NewAppraisal: React.FC = () => {
                 }
             }
 
-            // 4. Log Activity
-            // 4. Log Activity
             const activityFiles: any[] = [];
             for (const staged of stagedFiles) {
                 const { data: { publicUrl } } = supabase.storage.from(staged.bucket).getPublicUrl(`${workshopOwnerId}/${tempTicketId}/${staged.file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase()}`);
@@ -308,13 +420,47 @@ const NewAppraisal: React.FC = () => {
                 activity_type: 'appraisal_request',
                 summary: repairDetails.description || 'Nueva solicitud de reparación.',
                 file_assets: activityFiles,
-                raw_data: {
-                    vehicle: vehicleData,
-                    details: repairDetails,
-                    claim: claimData,
-                    tempTicketId
-                }
+                raw_data: { vehicle: vehicleData, details: repairDetails, claim: claimData, tempTicketId }
             });
+
+            if (extractionJobId) {
+                await supabase.from('extraction_jobs').update({ work_order_id: newOrder.id }).eq('id', extractionJobId);
+            }
+
+            if (extractedBilling && extractedBilling.total_estimate > 0) {
+                await supabase.from('work_order_billing').insert({
+                    workshop_id: workshopOwnerId,
+                    work_order_id: newOrder.id,
+                    bodywork_hours: extractedBilling.bodywork_hours || 0,
+                    paint_hours: extractedBilling.paint_hours || 0,
+                    bodywork_rate: extractedBilling.bodywork_rate || 45,
+                    paint_rate: extractedBilling.paint_rate || 50,
+                    labor_hours_billed: (extractedBilling.bodywork_hours || 0) + (extractedBilling.paint_hours || 0),
+                    labor_amount: (extractedBilling.bodywork_hours * (extractedBilling.bodywork_rate || 45)) + (extractedBilling.paint_hours * (extractedBilling.paint_rate || 50)),
+                    materials_amount: extractedBilling.materials_amount || 0,
+                    total_amount: extractedBilling.total_estimate || 0,
+                    invoice_status: 'draft',
+                    source: extractionJobId ? 'ai_extraction' : 'manual'
+                });
+            }
+
+            if (extractedParts.length > 0) {
+                const partsToInsert = extractedParts.map(p => ({
+                    workshop_id: workshopOwnerId,
+                    work_order_id: newOrder.id,
+                    part_number: p.part_number,
+                    description: p.description,
+                    qty_billed: p.quantity,
+                    price_billed: p.unit_price,
+                    confidence: p.confidence || 0,
+                    source: extractionJobId ? 'ai_extraction' : 'manual'
+                }));
+                await supabase.from('work_order_parts').insert(partsToInsert);
+            }
+
+            if (extractionJobId) {
+                await supabase.from('extraction_jobs').update({ status: 'completed' }).eq('id', extractionJobId);
+            }
 
             if (activeRole === 'Client') {
                 alert("¡Solicitud registrada correctamente!");
@@ -397,8 +543,49 @@ const NewAppraisal: React.FC = () => {
             {step === 2 && (
                 <div className="animate-fade-in space-y-6">
                     <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-bold text-slate-800">2. Datos del Vehículo y Reparación</h2>
+                        <div>
+                            <h2 className="text-xl font-bold text-slate-800">2. Datos del Vehículo y Reparación</h2>
+                            <p className="text-sm text-slate-500">Completa los datos o usa el importador de IA para acelerar el proceso.</p>
+                        </div>
                         <button onClick={() => setStep(1)} className="text-slate-400 hover:text-brand-600 font-bold text-sm">Volver a Cliente</button>
+                    </div>
+
+                    {/* AI EXTRACTION HUB - Module A */}
+                    <div className={`p-6 rounded-2xl border-2 border-dashed transition-all ${extractionStatus === 'processing' ? 'border-brand-500 bg-brand-50 animate-pulse' : 'border-slate-200 bg-white hover:border-brand-300'}`}>
+                        <div className="flex flex-col md:flex-row items-center gap-6">
+                            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg ${extractionStatus === 'completed' ? 'bg-green-600 text-white' : 'bg-brand-600 text-white'}`}>
+                                {extractionStatus === 'processing' ? (
+                                    <svg className="w-8 h-8 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-10" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                ) : extractionStatus === 'completed' ? (
+                                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                ) : (
+                                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                )}
+                            </div>
+                            <div className="flex-1 text-center md:text-left">
+                                <h3 className="text-lg font-black text-slate-800">Importador Inteligente (IA)</h3>
+                                <p className="text-sm text-slate-500 font-medium">Sube la peritación PDF para rellenar automáticamente matrícula, VIN y siniestro.</p>
+                                {extractionStatus === 'failed' && <p className="text-xs text-red-500 font-bold mt-1">Error: {extractionMessage}</p>}
+                                {extractionStatus === 'completed' && <p className="text-xs text-green-600 font-bold mt-1">{extractionMessage}</p>}
+                            </div>
+                            <div className="shrink-0 w-full md:w-auto">
+                                <label className={`block px-8 py-3 rounded-xl font-bold text-sm cursor-pointer transition-all text-center ${extractionStatus === 'processing' ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-black shadow-lg shadow-slate-200'}`}>
+                                    <input
+                                        type="file"
+                                        accept=".pdf"
+                                        className="hidden"
+                                        disabled={extractionStatus === 'processing'}
+                                        onChange={(e) => {
+                                            if (e.target.files?.[0]) {
+                                                runSmartAnalysis(e.target.files[0]);
+                                                processFiles(e.target.files);
+                                            }
+                                        }}
+                                    />
+                                    {extractionStatus === 'processing' ? 'Analizando...' : 'Seleccionar PDF'}
+                                </label>
+                            </div>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -480,16 +667,118 @@ const NewAppraisal: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="bg-slate-900 text-white p-8 rounded-2xl shadow-xl space-y-6">
-                            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 pb-2">Orden de Trabajo</h3>
-                            <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Observaciones / Daños</label>
-                                <textarea className="w-full p-4 bg-white/5 border border-white/10 rounded-xl h-24 text-sm outline-none focus:border-emerald-500 transition-colors" value={repairDetails.description} onChange={e => setRepairDetails({ ...repairDetails, description: e.target.value })} />
-                            </div>
-                            <button onClick={() => setStep(3)} disabled={!vehicleData.plate} className="w-full bg-brand-500 hover:bg-brand-400 text-white py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 disabled:opacity-30 transition-all mt-4">
-                                Continuar a Documentos
-                            </button>
+                    </div>
+
+                    {/* PRESUPUESTO Y RECAMBIOS - Module A (Manual/AI) */}
+                    <div className="md:col-span-2 bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-8">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                                Presupuesto y Recambios
+                            </h3>
+                            {(extractedBilling.total_estimate > 0 || extractedParts.length > 0) && (
+                                <span className="px-3 py-1 bg-brand-50 text-brand-600 rounded-full text-[10px] font-black uppercase tracking-tight">Datos Listos</span>
+                            )}
                         </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Horas Chapa</label>
+                                <input type="number" step="0.5" className="w-full bg-transparent font-black text-slate-800 text-lg outline-none" value={extractedBilling.bodywork_hours} onChange={e => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setExtractedBilling({ ...extractedBilling, bodywork_hours: val, total_estimate: (val * extractedBilling.bodywork_rate) + (extractedBilling.paint_hours * extractedBilling.paint_rate) + extractedBilling.materials_amount + extractedParts.reduce((acc, p) => acc + (p.unit_price * p.quantity), 0) });
+                                }} />
+                            </div>
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Horas Pintura</label>
+                                <input type="number" step="0.5" className="w-full bg-transparent font-black text-slate-800 text-lg outline-none" value={extractedBilling.paint_hours} onChange={e => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setExtractedBilling({ ...extractedBilling, paint_hours: val, total_estimate: (extractedBilling.bodywork_hours * extractedBilling.bodywork_rate) + (val * extractedBilling.paint_rate) + extractedBilling.materials_amount + extractedParts.reduce((acc, p) => acc + (p.unit_price * p.quantity), 0) });
+                                }} />
+                            </div>
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Material Pintura (€)</label>
+                                <input type="number" className="w-full bg-transparent font-black text-slate-800 text-lg outline-none" value={extractedBilling.materials_amount} onChange={e => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setExtractedBilling({ ...extractedBilling, materials_amount: val, total_estimate: (extractedBilling.bodywork_hours * extractedBilling.bodywork_rate) + (extractedBilling.paint_hours * extractedBilling.paint_rate) + val + extractedParts.reduce((acc, p) => acc + (p.unit_price * p.quantity), 0) });
+                                }} />
+                            </div>
+                            <div className="p-4 bg-brand-600 rounded-2xl border border-brand-500 text-white shadow-lg">
+                                <label className="block text-[10px] font-black text-white/60 uppercase mb-1">Total Estimado</label>
+                                <p className="text-xl font-black">€{extractedBilling.total_estimate.toFixed(2)}</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div className="flex justify-between items-center">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Listado de Recambios</h4>
+                                <button
+                                    onClick={() => setExtractedParts([...extractedParts, { description: '', part_number: '', quantity: 1, unit_price: 0 }])}
+                                    className="text-xs font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1"
+                                >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                    Añadir Recambio
+                                </button>
+                            </div>
+
+                            {extractedParts.length === 0 ? (
+                                <div className="py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                                    <p className="text-xs text-slate-400 font-medium italic">No se han añadido recambios todavía.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                    {extractedParts.map((part, idx) => (
+                                        <div key={idx} className="flex gap-3 p-3 bg-white rounded-xl border border-slate-200 items-center">
+                                            <input type="text" placeholder="Descripción" className="flex-1 text-xs font-bold border-none bg-transparent outline-none" value={part.description} onChange={e => {
+                                                const newParts = [...extractedParts];
+                                                newParts[idx].description = e.target.value;
+                                                setExtractedParts(newParts);
+                                            }} />
+                                            <input type="text" placeholder="Ref." className="w-24 text-[10px] font-mono border-none bg-transparent outline-none uppercase" value={part.part_number} onChange={e => {
+                                                const newParts = [...extractedParts];
+                                                newParts[idx].part_number = e.target.value;
+                                                setExtractedParts(newParts);
+                                            }} />
+                                            <input type="number" placeholder="Cant." className="w-12 text-xs font-bold text-center border-none bg-transparent outline-none" value={part.quantity} onChange={e => {
+                                                const newParts = [...extractedParts];
+                                                newParts[idx].quantity = parseFloat(e.target.value) || 0;
+                                                setExtractedParts(newParts);
+                                                // Update total estimate
+                                                const partsTotal = newParts.reduce((acc, p) => acc + (p.unit_price * p.quantity), 0);
+                                                setExtractedBilling({ ...extractedBilling, total_estimate: (extractedBilling.bodywork_hours * extractedBilling.bodywork_rate) + (extractedBilling.paint_hours * extractedBilling.paint_rate) + extractedBilling.materials_amount + partsTotal });
+                                            }} />
+                                            <input type="number" placeholder="Precio" className="w-20 text-xs font-bold text-right border-none bg-transparent outline-none" value={part.unit_price} onChange={e => {
+                                                const newParts = [...extractedParts];
+                                                newParts[idx].unit_price = parseFloat(e.target.value) || 0;
+                                                setExtractedParts(newParts);
+                                                // Update total estimate
+                                                const partsTotal = newParts.reduce((acc, p) => acc + (p.unit_price * p.quantity), 0);
+                                                setExtractedBilling({ ...extractedBilling, total_estimate: (extractedBilling.bodywork_hours * extractedBilling.bodywork_rate) + (extractedBilling.paint_hours * extractedBilling.paint_rate) + extractedBilling.materials_amount + partsTotal });
+                                            }} />
+                                            <button onClick={() => {
+                                                const newParts = extractedParts.filter((_, i) => i !== idx);
+                                                setExtractedParts(newParts);
+                                                const partsTotal = newParts.reduce((acc, p) => acc + (p.unit_price * p.quantity), 0);
+                                                setExtractedBilling({ ...extractedBilling, total_estimate: (extractedBilling.bodywork_hours * extractedBilling.bodywork_rate) + (extractedBilling.paint_hours * extractedBilling.paint_rate) + extractedBilling.materials_amount + partsTotal });
+                                            }} className="text-slate-300 hover:text-red-500">
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="bg-slate-900 text-white p-8 rounded-2xl shadow-xl space-y-6">
+                        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 pb-2">Orden de Trabajo</h3>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Observaciones / Daños</label>
+                            <textarea className="w-full p-4 bg-white/5 border border-white/10 rounded-xl h-24 text-sm outline-none focus:border-emerald-500 transition-colors" value={repairDetails.description} onChange={e => setRepairDetails({ ...repairDetails, description: e.target.value })} />
+                        </div>
+                        <button onClick={() => setStep(3)} disabled={!vehicleData.plate} className="w-full bg-brand-500 hover:bg-brand-400 text-white py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 disabled:opacity-30 transition-all mt-4">
+                            Continuar a Documentos
+                        </button>
                     </div>
                 </div>
             )}
@@ -558,16 +847,147 @@ const NewAppraisal: React.FC = () => {
                 </div>
             )}
 
-            {/* MODAL CLIENTE */}
-            {showCustomerModal && <WorkshopCustomerForm onSubmit={handleCreateCustomer} onCancel={() => setShowCustomerModal(false)} />}
+            {/* MODAL REVISIÓN IA (Rule 2) */}
+            {showReviewUI && extractedBilling && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white rounded-[32px] shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-slate-200">
+                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <div>
+                                <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Revisión de Peritación IA</h2>
+                                <p className="text-sm text-slate-500 font-medium">Verifique los datos extraídos antes de aplicarlos a la orden.</p>
+                            </div>
+                            <button onClick={() => setShowReviewUI(false)} className="bg-white text-slate-400 hover:text-slate-600 w-12 h-12 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-center transition-all">
+                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
 
-            {/* MODAL PREVIEW */}
-            {previewFile && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/90">
-                    <div className="relative max-w-4xl w-full h-[85vh] bg-white rounded-3xl overflow-hidden flex flex-col">
-                        <button onClick={() => setPreviewFile(null)} className="absolute top-4 right-4 bg-white text-slate-900 font-bold w-10 h-10 rounded-full shadow-lg z-10">&times;</button>
-                        <div className="flex-1 bg-slate-100 overflow-auto flex items-center justify-center p-4">
-                            <img src={previewFile.preview} className="max-w-full max-h-full object-contain" alt="preview" />
+                        <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+                            {/* Billing Section */}
+                            <section className="space-y-4">
+                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                                    Totales y Mano de Obra
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    <div className={`p-4 rounded-2xl border transition-colors ${confidenceScores?.labor < 0.80 ? 'bg-yellow-50 border-yellow-200' : 'bg-slate-50 border-slate-100'}`}>
+                                        <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Horas Carrocería</label>
+                                        <input
+                                            type="number"
+                                            className="w-full bg-transparent font-black text-slate-800 text-lg outline-none"
+                                            value={extractedBilling.bodywork_hours}
+                                            onChange={e => setExtractedBilling({ ...extractedBilling, bodywork_hours: parseFloat(e.target.value) || 0 })}
+                                        />
+                                    </div>
+                                    <div className={`p-4 rounded-2xl border transition-colors ${confidenceScores?.labor < 0.80 ? 'bg-yellow-50 border-yellow-200' : 'bg-slate-50 border-slate-100'}`}>
+                                        <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Horas Pintura</label>
+                                        <input
+                                            type="number"
+                                            className="w-full bg-transparent font-black text-slate-800 text-lg outline-none"
+                                            value={extractedBilling.paint_hours}
+                                            onChange={e => setExtractedBilling({ ...extractedBilling, paint_hours: parseFloat(e.target.value) || 0 })}
+                                        />
+                                    </div>
+                                    <div className={`p-4 rounded-2xl border transition-colors ${confidenceScores?.materials < 0.80 ? 'bg-yellow-50 border-yellow-200' : 'bg-slate-50 border-slate-100'}`}>
+                                        <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Material Pintura</label>
+                                        <input
+                                            type="number"
+                                            className="w-full bg-transparent font-black text-slate-800 text-lg outline-none"
+                                            value={extractedBilling.materials_amount}
+                                            onChange={e => setExtractedBilling({ ...extractedBilling, materials_amount: parseFloat(e.target.value) || 0 })}
+                                        />
+                                    </div>
+                                    <div className="p-4 rounded-2xl border bg-brand-600 border-brand-500 text-white shadow-lg shadow-brand-100">
+                                        <label className="block text-[10px] font-black text-white/60 uppercase mb-1">Total Estimado</label>
+                                        <input
+                                            type="number"
+                                            className="w-full bg-transparent font-black text-white text-lg outline-none"
+                                            value={extractedBilling.total_estimate}
+                                            onChange={e => setExtractedBilling({ ...extractedBilling, total_estimate: parseFloat(e.target.value) || 0 })}
+                                        />
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Parts Section */}
+                            <section className="space-y-4">
+                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                                    Recambios y Piezas
+                                </h3>
+                                <div className="space-y-2">
+                                    {extractedParts.map((part: any, idx: number) => (
+                                        <div key={idx} className={`flex flex-col md:flex-row gap-4 p-4 rounded-2xl border transition-colors ${part.confidence < 0.80 ? 'bg-yellow-50 border-yellow-200' : 'bg-white border-slate-200'}`}>
+                                            <div className="flex-1">
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Descripción</label>
+                                                <input
+                                                    type="text"
+                                                    className="w-full bg-transparent font-bold text-slate-800 text-sm outline-none"
+                                                    value={part.description}
+                                                    onChange={e => {
+                                                        const newParts = [...extractedParts];
+                                                        newParts[idx].description = e.target.value;
+                                                        setExtractedParts(newParts);
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="w-full md:w-48">
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Referencia</label>
+                                                <input
+                                                    type="text"
+                                                    className="w-full bg-transparent font-mono text-slate-600 text-xs outline-none uppercase"
+                                                    value={part.part_number}
+                                                    onChange={e => {
+                                                        const newParts = [...extractedParts];
+                                                        newParts[idx].part_number = e.target.value;
+                                                        setExtractedParts(newParts);
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="w-full md:w-24">
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Cant.</label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full bg-transparent font-bold text-slate-800 text-sm outline-none"
+                                                    value={part.quantity}
+                                                    onChange={e => {
+                                                        const newParts = [...extractedParts];
+                                                        newParts[idx].quantity = parseFloat(e.target.value) || 0;
+                                                        setExtractedParts(newParts);
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="w-full md:w-32">
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">PVP</label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full bg-transparent font-bold text-slate-800 text-sm outline-none"
+                                                    value={part.unit_price}
+                                                    onChange={e => {
+                                                        const newParts = [...extractedParts];
+                                                        newParts[idx].unit_price = parseFloat(e.target.value) || 0;
+                                                        setExtractedParts(newParts);
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                        </div>
+
+                        <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-end gap-4">
+                            <button onClick={() => setShowReviewUI(false)} className="px-8 py-4 rounded-2xl font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-200 transition-all">Cancelar</button>
+                            <button
+                                onClick={() => {
+                                    setShowReviewUI(false);
+                                    setExtractionStatus('completed');
+                                    setExtractionMessage('Datos revisados y listos para guardar.');
+                                }}
+                                className="bg-brand-600 hover:bg-brand-700 text-white px-12 py-4 rounded-2xl font-black shadow-xl shadow-brand-100 transition-all transform active:scale-95 flex items-center gap-3"
+                            >
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                CONFIRMAR Y APLICAR
+                            </button>
                         </div>
                     </div>
                 </div>

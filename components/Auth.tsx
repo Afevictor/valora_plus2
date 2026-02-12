@@ -249,11 +249,11 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
         <div className="text-center mb-6 md:mb-10">
           <div className={`w-14 h-14 ${view.includes('client') ? 'bg-emerald-500' : 'bg-brand-600'} rounded-2xl flex items-center justify-center text-white font-black shadow-lg mx-auto mb-6 text-2xl`}>V+</div>
           <h2 className="text-3xl font-black text-slate-900">
-            {view === 'login' ? 'Admin Access' :
-              view === 'signup' ? 'Create Workshop Account' :
-                view === 'client_login' ? 'My Workshop Login' :
-                  view === 'client_signup' ? 'Workshop Registration' :
-                    'Reset Password'}
+            {view === 'login' ? 'Acceso de Gestión' :
+              view === 'signup' ? 'Crear Cuenta de Taller' :
+                view === 'client_login' ? 'Acceso Mi Taller' :
+                  view === 'client_signup' ? 'Registro de Taller' :
+                    'Recuperar Contraseña'}
           </h2>
           {view === 'client_signup' && <p className="text-slate-500 mt-2">Complete all required fields.</p>}
         </div>
@@ -304,7 +304,7 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
               className="w-full bg-emerald-500 text-white font-black py-4 rounded-xl shadow-lg hover:bg-emerald-600 transition-all flex items-center justify-center gap-2"
             >
               {loading ? <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : null}
-              ACCESS TO MY WORKSHOP
+              ACCEDER A MI TALLER
             </button>
           </form>
         )}
@@ -314,7 +314,7 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 ml-1">Company Name</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 ml-1">Nombre del Taller / Empresa</label>
                 <input
                   type="text"
                   required
@@ -338,7 +338,7 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 ml-1">Fiscal Directorate</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 ml-1">Dirección Fiscal</label>
                 <input
                   type="text"
                   required
@@ -379,7 +379,7 @@ const Auth: React.FC<AuthProps> = ({ initialView = 'login', onAuthSuccess, onBac
               className="w-full bg-emerald-500 text-white font-black py-4 rounded-xl shadow-xl hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 mt-8 text-lg"
             >
               {loading ? <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : null}
-              REGISTER WORKSHOP
+              REGISTRAR TALLER
             </button>
           </form>
         )}

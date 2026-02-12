@@ -144,7 +144,7 @@ const AssessmentImporter: React.FC<Props> = ({ workOrderId, expedienteId, onUplo
                 original_filename: file.name,
                 mime_type: file.type,
                 size_bytes: file.size,
-                category: 'Valuation Report',
+                category: 'Assessment PDF',
                 uploaded_by: user?.id
             };
 

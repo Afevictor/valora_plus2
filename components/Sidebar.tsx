@@ -128,7 +128,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
               </div>
               <div className="flex flex-col">
                 <span className="font-black text-lg text-white tracking-tight leading-none uppercase">Valora Plus</span>
-                <span className={`text-[10px] font-bold ${isClient ? 'text-emerald-500' : 'text-brand-500'} tracking-widest uppercase mt-0.5`}>DMS Intelligence</span>
+                <span className={`text-[10px] font-bold ${isClient ? 'text-emerald-500' : 'text-brand-500'} tracking-widest uppercase mt-0.5`}>Inteligencia de Gestión</span>
               </div>
             </Link>
           </div>
@@ -136,36 +136,36 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
           <nav className="flex-1 px-4 py-2 overflow-y-auto custom-scrollbar relative">
             {isClient ? (
               <>
-                <SectionHeader label="Taller" />
-                <NavItem to="/" icon={<DashboardIcon />} label="Mis Reparaciones" active={location.pathname === '/'} isClient={true} />
+                <SectionHeader label="Taller y Operaciones" />
+                <NavItem to="/" icon={<DashboardIcon />} label="Panel de Resumen" active={location.pathname === '/'} isClient={true} />
                 <NavItem to="/kanban" icon={<KanbanIcon />} label="Tablero de Progreso" active={location.pathname === '/kanban'} isClient={true} />
+                <NavItem to="/operator-time" icon={<ClockIcon />} label="Control de Operarios" active={location.pathname === '/operator-time'} isClient={true} />
 
-                <SectionHeader label="Gestión" />
+                <SectionHeader label="Gestión Administrativa" />
                 <NavItem to="/contacts" icon={<ContactIcon />} label="Mis Clientes" active={location.pathname === '/contacts'} isClient={true} />
-
                 <NavItem to="/purchases" icon={<PurchaseIcon />} label="Importar Compras" active={location.pathname === '/purchases'} isClient={true} />
-                <NavItem to="/history-ot" icon={<HistoryIcon />} label="Historial OT" active={location.pathname === '/history-ot'} isClient={true} />
+                <NavItem to="/history-ot" icon={<HistoryIcon />} label="Historial de Órdenes" active={location.pathname === '/history-ot'} isClient={true} />
 
-                <SectionHeader label="Finanzas" />
-                <NavItem to="/calculator" icon={<CalculatorIcon />} label="Calculadora de Costes" active={location.pathname === '/calculator'} isClient={true} />
-
-                <SectionHeader label="Estrategia" />
+                <SectionHeader label="Inteligencia y Rentabilidad" />
                 <NavItem to="/client-analysis" icon={<ZapIcon />} label="Análisis de Rentabilidad" active={location.pathname === '/client-analysis'} isClient={true} />
-                <NavItem to="/crm" icon={<CrmIcon />} label="CRM / Estrategia" active={location.pathname === '/crm'} isClient={true} />
-                <NavItem to="/client-area" icon={<UserIcon />} label="Mi Taller (Perfil)" active={location.pathname === '/client-area'} isClient={true} />
+                <NavItem to="/calculator" icon={<CalculatorIcon />} label="Calculadora de Costes" active={location.pathname === '/calculator'} isClient={true} />
+                <NavItem to="/crm" icon={<CrmIcon />} label="CRM Estratégico" active={location.pathname === '/crm'} isClient={true} />
+
+                <SectionHeader label="Configuración" />
+                <NavItem to="/client-area" icon={<UserIcon />} label="Mi Perfil de Taller" active={location.pathname === '/client-area'} isClient={true} />
               </>
             ) : (
               <>
                 <SectionHeader label="Valora Control" />
                 <NavItem to="/" icon={<DashboardIcon />} label="Panel de Gestión" active={location.pathname === '/'} isClient={false} />
 
-                <SectionHeader label="Appraisal Hub" />
+                <SectionHeader label="Centro de Peritaciones" />
                 <NavItem to="/admin/queue" icon={<QueueIcon />} label="Cola de Aprobación" active={location.pathname === '/admin/queue'} isClient={false} />
                 <NavItem to="/valuations" icon={<ValuationsIcon />} label="Chat de Peritos" active={location.pathname === '/valuations'} isClient={false} />
                 <NavItem to="/claims-planner" icon={<ShieldIcon />} label="Planificador Kanban" active={location.pathname === '/claims-planner'} isClient={false} />
                 <NavItem to="/history-claims" icon={<ArchiveIcon />} label="Historial Siniestros" active={location.pathname === '/history-claims'} isClient={false} />
 
-                <SectionHeader label="B2B & Operaciones" />
+                <SectionHeader label="Operaciones B2B" />
                 <NavItem to="/contacts" icon={<ContactIcon />} label="Talleres Asociados" active={location.pathname === '/contacts'} isClient={false} />
 
                 <SectionHeader label="Configuración" />

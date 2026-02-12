@@ -20,6 +20,7 @@ import Contacts from './components/Contacts';
 import AnalysisReport from './components/AnalysisReport';
 import BitrixConfig from './components/BitrixConfig';
 import VehicleDetail from './components/VehicleDetail';
+import OperatorTimeTracking from './components/OperatorTimeTracking';
 import LandingPage from './components/LandingPage';
 import ClientAnalysisPortal from './components/ClientAnalysisPortal';
 import Subscription from './components/Subscription';
@@ -64,6 +65,7 @@ const App = () => {
       '/calculator': 'Calculadora Costes',
       '/purchases': 'Importador de Compras',
       '/attendance': 'Control Horario',
+      '/operator-time': 'Control de Operarios',
       '/bitrix-config': 'Conexión Bitrix24',
       '/tutorials': 'Academia',
       '/client-area': 'Mi Taller',
@@ -152,7 +154,7 @@ const App = () => {
           <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
             <div className="flex items-center gap-2 font-bold text-xl text-brand-600">
               <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-black">V+</div>
-              VALORA PLUS ACADEMY
+              ACADEMIA VALORA PLUS
             </div>
             <button
               onClick={() => setShowTutorials(false)}
@@ -281,6 +283,11 @@ const App = () => {
                 <Route path="/attendance" element={
                   <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
                     <AttendanceTracker />
+                  </ProtectedRoleRoute>
+                } />
+                <Route path="/operator-time" element={
+                  <ProtectedRoleRoute allowedRoles={['Client']} activeRole={activeRole as AppRole}>
+                    <OperatorTimeTracking />
                   </ProtectedRoleRoute>
                 } />
                 <Route path="/client-area" element={

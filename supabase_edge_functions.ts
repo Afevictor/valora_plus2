@@ -219,7 +219,37 @@ async function handleBitrixWebhook(req: Request) {
 // MODULE A: AI EXTRACTION JOB HANDLER
 // -----------------------------------------------------------------------------
 async function handleExtractionJob(req: Request) {
+  const { method } = req;
+  const url = new URL(req.url);
+
   try {
+    // --- 1. HANDLE QUERY (GET) ---
+    if (method === 'GET') {
+      const jobId = url.searchParams.get('jobId');
+      if (!jobId) return new Response("Missing jobId parameter", { status: 400 });
+
+      const { data: job, error } = await supabase
+        .from('extraction_jobs')
+        .select('*')
+        .eq('id', jobId)
+        .single();
+
+      if (error || !job) {
+        return new Response(JSON.stringify({ error: "Job not found" }), { status: 404 });
+      }
+
+      return new Response(JSON.stringify({
+        job_id: job.id,
+        status: job.status,
+        extracted_data: job.extracted_data,
+        confidence_scores: job.confidence_scores,
+        completed_at: job.completed_at
+      }), {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    // --- 2. HANDLE TRIGGER (POST) ---
     const { action, jobId } = await req.json();
 
     if (action !== 'process') {
@@ -230,15 +260,13 @@ async function handleExtractionJob(req: Request) {
       return new Response("Missing jobId", { status: 400 });
     }
 
-    // 1. UPDATE VALIDATION: Set status to processing
-    await supabase.from('extraction_jobs')
-      .update({ status: 'processing' })
-      .eq('id', jobId);
+    // UPDATE: Set status to processing
+    await supabase.from('extraction_jobs').update({ status: 'processing' }).eq('id', jobId);
 
-    // 2. FETCH JOB DETAILS (to get file_id)
+    // FETCH JOB DETAILS
     const { data: job, error: jobError } = await supabase
       .from('extraction_jobs')
-      .select('*, workshop_files!inner(*)') // Join with files to get storage path
+      .select('*, workshop_files!inner(*)')
       .eq('id', jobId)
       .single();
 
@@ -246,34 +274,24 @@ async function handleExtractionJob(req: Request) {
       throw new Error(`Job not found: ${jobError?.message}`);
     }
 
-    // 3. DOWNLOAD PDF FROM STORAGE
-    // Note: bucket name is usually in workshop_files.bucket field
-    const bucket = job.workshop_files.bucket || 'documents';
+    const bucket = job.workshop_files.bucket || 'reception-files';
     const path = job.workshop_files.storage_path;
 
-    const { data: fileData, error: downloadError } = await supabase
-      .storage
-      .from(bucket)
-      .download(path);
+    const { data: fileData, error: downloadError } = await supabase.storage.from(bucket).download(path);
+    if (downloadError) throw new Error(`Failed to download: ${downloadError.message}`);
 
-    if (downloadError) {
-      throw new Error(`Failed to download file: ${downloadError.message}`);
-    }
-
-    // 4. CALL AI SERVICE (MOCKED FOR NOW)
-    // In a real scenario, we would send 'fileData' (ArrayBuffer) to OpenAI/Anthropic
-    console.log(`Processing file: ${path} for Job ${jobId}`);
-
-    // --- MOCK AI RESPONSE START ---
-    // Simulating a 2-second delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // --- MOCK AI RESPONSE (Strict Spec Alignment) ---
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
     const mockExtractedData = {
+      vehicle: {
+        plate: "1234BBB", brand: "BMW", model: "3 Series", vin: "WBA3B31000F123456", km: 45200, year: 2018, color: "Gris Metalizado"
+      },
+      claim: {
+        claim_number: "SIN-2026-8899", incident_type: "collision", incident_date: "2026-02-05"
+      },
       labor: {
-        bodywork_hours: 12.5,
-        paint_hours: 8.0,
-        bodywork_rate: 45.00,
-        paint_rate: 50.00
+        bodywork_hours: 12.5, paint_hours: 8.0, bodywork_rate: 45.00, paint_rate: 50.00
       },
       materials: {
         paint_amount: 350.00,
@@ -284,37 +302,37 @@ async function handleExtractionJob(req: Request) {
       },
       total_estimate: 2180.00
     };
-    const mockConfidence = { overall: 0.89, labor: 0.92, materials: 0.88 };
-    // --- MOCK AI RESPONSE END ---
 
-    // 5. UPDATE JOB WITH RESULTS
-    await supabase.from('extraction_jobs')
-      .update({
-        status: 'completed',
-        extracted_data: mockExtractedData,
-        confidence_scores: mockConfidence,
-        completed_at: new Date().toISOString()
-      })
-      .eq('id', jobId);
+    const mockConfidence = { overall: 0.89, labor: 0.92, materials: 0.88, parts: 0.85 };
 
-    // 6. BUSINESS RULE: AUTO-FILL IF CONFIDENCE > 0.80
-    if (mockConfidence.overall > 0.80) {
+    // --- SAVE BUSINESS LOGIC & PERSISTENCE ---
+    const finalStatus = mockConfidence.overall > 0.80 ? 'completed' : 'requires_review';
+
+    const { error: updError } = await supabase.from('extraction_jobs').update({
+      status: finalStatus,
+      extracted_data: mockExtractedData,
+      confidence_scores: mockConfidence,
+      completed_at: new Date().toISOString()
+    }).eq('id', jobId);
+
+    if (updError) throw updError;
+
+    // Rule 1: Auto-fill if confidence > 80%
+    if (finalStatus === 'completed' && job.work_order_id) {
       const laborTotal = (mockExtractedData.labor.bodywork_hours * mockExtractedData.labor.bodywork_rate) +
         (mockExtractedData.labor.paint_hours * mockExtractedData.labor.paint_rate);
 
-      // A. Insert Billing
       await supabase.from('work_order_billing').insert({
-        workshop_id: job.workshop_id, // Inherit from job
+        workshop_id: job.workshop_id,
         work_order_id: job.work_order_id,
         labor_hours_billed: mockExtractedData.labor.bodywork_hours + mockExtractedData.labor.paint_hours,
         labor_amount: laborTotal,
-        materials_amount: mockExtractedData.materials.paint_amount, // Base materials (paint)
+        materials_amount: mockExtractedData.materials.paint_amount,
         total_amount: mockExtractedData.total_estimate,
         invoice_status: 'draft',
         source: 'ai_extraction'
       });
 
-      // B. Insert Parts
       const partsToInsert = mockExtractedData.materials.parts.map((p: any) => ({
         workshop_id: job.workshop_id,
         work_order_id: job.work_order_id,
@@ -332,20 +350,17 @@ async function handleExtractionJob(req: Request) {
     }
 
     return new Response(JSON.stringify({
-      success: true,
       job_id: jobId,
-      status: 'completed',
-      data: mockExtractedData
+      status: finalStatus,
+      extracted_data: mockExtractedData,
+      confidence_scores: mockConfidence,
+      completed_at: new Date().toISOString()
     }), {
       headers: { "Content-Type": "application/json" }
     });
 
   } catch (error) {
-    // Log failure to DB
-    if (req && req.json) { // Verify we can parse valid json to get ID, ignoring for now in catch block safety
-      // In real code, try to capture jobId to update status to 'failed'
-    }
-
     return new Response(JSON.stringify({ error: error.message }), { status: 500 });
   }
 }
+
