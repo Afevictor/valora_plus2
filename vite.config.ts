@@ -6,7 +6,23 @@ import path from 'path';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        name: 'spa-fallback',
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            // If the request is for a file (has extension) or API call, let it through
+            if (req.url?.includes('.') || req.url?.startsWith('/api')) {
+              return next();
+            }
+            // For all other routes, serve index.html
+            req.url = '/index.html';
+            next();
+          });
+        }
+      }
+    ],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./"),
@@ -18,8 +34,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 3000,
-      host: true,
-      historyApiFallback: true
+      host: true
     },
     preview: {
       port: 3000,
