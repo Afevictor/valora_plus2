@@ -6,23 +6,7 @@ import path from 'path';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
-    plugins: [
-      react(),
-      {
-        name: 'spa-fallback',
-        configureServer(server) {
-          server.middlewares.use((req, res, next) => {
-            // If the request is for a file (has extension) or API call, let it through
-            if (req.url?.includes('.') || req.url?.startsWith('/api')) {
-              return next();
-            }
-            // For all other routes, serve index.html
-            req.url = '/index.html';
-            next();
-          });
-        }
-      }
-    ],
+    plugins: [react()],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./"),
