@@ -8,7 +8,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Upload, FileText, AlertCircle, CheckCircle2, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const NewAnalysis = ({ onNext, setGlobalCaseId }: { onNext: () => void, setGlobalCaseId: (id: string) => void }) => {
+import { analyzeProfitabilityDocument } from "@/services/geminiService";
+
+const NewAnalysis = ({ 
+    onNext, 
+    setGlobalCaseId, 
+    setAnalysisData 
+}: { 
+    onNext: () => void, 
+    setGlobalCaseId: (id: string) => void,
+    setAnalysisData: (data: any) => void
+}) => {
     const [dragActive, setDragActive] = useState(false);
     const [uploadedFile, setUploadedFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -61,21 +71,45 @@ const NewAnalysis = ({ onNext, setGlobalCaseId }: { onNext: () => void, setGloba
         }
 
         setUploadedFile(file);
-        simulateUpload(file);
+        processFile(file);
     };
 
-    const simulateUpload = async (file: File) => {
+    const processFile = async (file: File) => {
         setIsUploading(true);
-        // Mimicking the original behavior but simplified for integration
-        setTimeout(() => {
+        
+        try {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const base64 = (e.target?.result as string).split(',')[1];
+                const result = await analyzeProfitabilityDocument(base64, file.type);
+                
+                setIsUploading(false);
+                
+                if (result.success && result.vehicle) {
+                    setAnalysisData(result);
+                    setGlobalCaseId(`case-${Date.now()}`);
+                    toast({
+                        title: "PDF procesado",
+                        description: `Se han detectado datos de un ${result.vehicle.make_model}.`,
+                    });
+                } else {
+                    toast({
+                        title: "Error en extracción",
+                        description: result.analysis.summary,
+                        variant: "destructive"
+                    });
+                }
+            };
+            reader.readAsDataURL(file);
+        } catch (error) {
             setIsUploading(false);
-            const mockCaseId = `case-${Date.now()}`;
-            setGlobalCaseId(mockCaseId);
+            console.error("Error processing file:", error);
             toast({
-                title: "PDF subido correctamente",
-                description: "Datos extraídos y procesados (Simulado).",
+                title: "Error",
+                description: "No se pudo procesar el archivo.",
+                variant: "destructive"
             });
-        }, 2000);
+        }
     };
 
     const removeFile = () => {

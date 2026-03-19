@@ -162,27 +162,21 @@ export const analyzeVehicleReceptionBatch = async (
 };
 
 export const analyzeProfitabilityDocument = async (base64Data: string, mimeType: string = 'application/pdf') => {
-  console.log("Starting Local Extraction (No AI)...");
+  console.log("Starting Local Extraction (Enhanced)...");
 
   try {
     let fullText = "";
-
-    // 1. Decodificar Base64
     const binaryString = atob(base64Data);
 
-    // 2. Si es PDF, usar PDF.js desde CDN (ESM import)
     if (mimeType.includes("pdf")) {
       try {
-        // Importación dinámica de PDF.js
         // @ts-ignore
         const pdfjs = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/+esm');
         pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
 
-        // Cargar documento
         const loadingTask = pdfjs.getDocument({ data: binaryString });
         const pdf = await loadingTask.promise;
 
-        // Extraer texto de todas las páginas
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const textContent = await page.getTextContent();
@@ -191,58 +185,83 @@ export const analyzeProfitabilityDocument = async (base64Data: string, mimeType:
         }
       } catch (pdfError) {
         console.error("PDF Parsing Error:", pdfError);
-        throw new Error("No se pudo leer el texto del PDF (Bloqueo de seguridad o formato inválido).");
+        throw new Error("No se pudo leer el texto del PDF.");
       }
     } else {
-      // Si es imagen, no tenemos OCR local. Retornamos error específico.
-      // Nota: Para imágenes se requeriría Tesseract.js pero es muy pesado para inyectar así.
-      throw new Error("La extracción local solo soporta PDFs de texto (no imágenes escaneadas).");
+      throw new Error("La extracción local solo soporta PDFs de texto.");
     }
 
-    console.log("Extracted Text Preview:", fullText.substring(0, 200));
+    // Helper to clean numbers: "3.732,60" -> 3732.6
+    const cleanNum = (str: string) => {
+      if (!str) return 0;
+      return parseFloat(str.replace(/\./g, '').replace(',', '.'));
+    };
 
-    // 3. REGEX LOGIC (La parte clave)
-    // Busca: "asciende a" + espacios + [NUMERO EN FORMATO EUROPEO]
-    // Ejemplo: asciende a 3.732,60
-    const regex = /asciende\s+a\s+([\d.]+,\d{2})/i;
-    const match = fullText.match(regex);
+    // --- REGEX PATTERNS ---
+    
+    // Total (Generic / GT Motive)
+    const totalMatch = fullText.match(/asciende\s+a\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+\(menos\s+franquicia\)\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+VALORACION\s+([\d.]+,\d{2})/i);
+    
+    // Vehicle Data
+    const plateMatch = fullText.match(/Matrícula\s+([A-Z0-9-]{6,10})/i);
+    const vinMatch = fullText.match(/Nº\s+ID\s+del\s+vehículo\s+([A-Z0-9]{17,})/i) || fullText.match(/Bastidor\s+([A-Z0-9]{17,})/i);
+    const brandModelMatch = fullText.match(/(Mercedes-Benz|Audi|BMW|Volkswagen|Renault|Peugeot|Citroen|Seat|Toyota|Ford|Nissan|Hyundai|Kia)\s+[^(\n]+/i);
+    
+    // Detailed Totals
+    const partsMatch = fullText.match(/Total\s+recambios\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+RECAMBIOS\s+([\d.]+,\d{2})/i);
+    const laborMatch = fullText.match(/Total\s+MO\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+MANO\s+DE\s+OBRA\s+([\d.]+,\d{2})/i);
+    const paintLaborMatch = fullText.match(/Total\s+MO\s+pintura\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+PINTURA\s+([\d.]+,\d{2})/i);
+    const paintMaterialMatch = fullText.match(/Subtotal\s+material\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+MATERIAL\s+DE\s+PINTURA\s+([\d.]+,\d{2})/i);
+    const baseMatch = fullText.match(/Base\s+imponible\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+NETO\s+([\d.]+,\d{2})/i);
 
-    let totalGross = 0;
+    const data = {
+      matricula: plateMatch ? plateMatch[1].trim() : "S/D",
+      bastidor: vinMatch ? vinMatch[1].trim() : "S/D",
+      fabricante: brandModelMatch ? brandModelMatch[1].trim() : "Detectado",
+      modelo: brandModelMatch ? brandModelMatch[0].trim() : "Modelo",
+      totales: {
+        total_gross: totalMatch ? cleanNum(totalMatch[1]) : 0,
+        subtotal_neto: baseMatch ? cleanNum(baseMatch[1]) : 0,
+        repuestos: partsMatch ? cleanNum(partsMatch[1]) : 0,
+        mo_chapa: laborMatch ? cleanNum(laborMatch[1]) : 0,
+        mo_pintura: paintLaborMatch ? cleanNum(paintLaborMatch[1]) : 0,
+        mat_pintura: paintMaterialMatch ? cleanNum(paintMaterialMatch[1]) : 0
+      }
+    };
 
-    if (match && match[1]) {
-      // Limpieza: "3.732,60" -> "3732.60"
-      // 1. Eliminar puntos de miles
-      let cleanNumber = match[1].replace(/\./g, '');
-      // 2. Cambiar coma decimal por punto
-      cleanNumber = cleanNumber.replace(',', '.');
-
-      totalGross = parseFloat(cleanNumber);
-      console.log("MATCH FOUND:", totalGross);
-    } else {
-      console.warn("Pattern 'asciende a' NOT found in text.");
+    // Fallback net if only gross is found
+    if (data.totales.total_gross > 0 && data.totales.subtotal_neto === 0) {
+      data.totales.subtotal_neto = data.totales.total_gross / 1.21;
     }
 
-    // 4. Retornar estructura estándar
-    if (totalGross > 0) {
-      return {
-        vehicle: { make_model: "Detectado", plate: "S/D", vin: "", owner: "" },
-        financials: { total_gross: totalGross, total_net: totalGross / 1.21 }, // Asumiendo IVA 21% para el neto
-        analysis: { summary: `Extracción local exitosa: ${totalGross}€`, profitability_rating: "High" },
-        metadata: { file_ref: "LOCAL-REGEX" }
-      };
-    } else {
-      return {
-        financials: { total_gross: 0 },
-        analysis: { summary: "No se encontró el patrón 'asciende a [precio]'.", profitability_rating: "Low" }
-      };
-    }
+    return {
+      success: true,
+      vehicle: { 
+        make_model: data.modelo, 
+        plate: data.matricula, 
+        vin: data.bastidor,
+        brand: data.fabricante 
+      },
+      financials: { 
+        total_gross: data.totales.total_gross, 
+        total_net: data.totales.subtotal_neto,
+        parts_total: data.totales.repuestos,
+        labor_total: data.totales.mo_chapa,
+        paint_labor: data.totales.mo_pintura,
+        paint_material: data.totales.mat_pintura
+      },
+      analysis: { 
+        summary: `Extracción local exitosa: ${data.totales.total_gross}€`, 
+        profitability_rating: data.totales.total_gross > 2000 ? "High" : "Medium" 
+      }
+    };
 
   } catch (error) {
     console.error("Local Extraction Failed:", error);
-    const msg = error instanceof Error ? error.message : String(error);
     return {
+      success: false,
       financials: { total_gross: 0 },
-      analysis: { summary: `Error Local: ${msg}` },
+      analysis: { summary: `Error: ${error instanceof Error ? error.message : "Error desconocido"}` },
     };
   }
 };

@@ -8,6 +8,7 @@ import Results from "./analysis/Results";
 const ClientAnalysisPortal: React.FC = () => {
     const [activeStep, setActiveStep] = useState(1);
     const [caseId, setCaseId] = useState<string | null>(null);
+    const [analysisData, setAnalysisData] = useState<any>(null);
 
     const nextStep = () => setActiveStep(prev => prev + 1);
     const prevStep = () => setActiveStep(prev => Math.max(1, prev - 1));
@@ -15,15 +16,20 @@ const ClientAnalysisPortal: React.FC = () => {
     const renderStep = () => {
         switch (activeStep) {
             case 1:
-                return <NewAnalysis onNext={nextStep} setGlobalCaseId={setCaseId} />;
+                return <NewAnalysis onNext={nextStep} setGlobalCaseId={setCaseId} setAnalysisData={setAnalysisData} />;
             case 2:
-                return <Verification onNext={nextStep} onBack={prevStep} caseId={caseId || ""} />;
+                return <Verification 
+                    onNext={nextStep} 
+                    onBack={prevStep} 
+                    caseId={caseId || ""} 
+                    extracted={analysisData}
+                />;
             case 3:
                 return <WorkshopCosts onNext={nextStep} onBack={prevStep} />;
             case 4:
-                return <Results onBack={prevStep} />;
+                return <Results onBack={prevStep} data={analysisData} />;
             default:
-                return <NewAnalysis onNext={nextStep} setGlobalCaseId={setCaseId} />;
+                return <NewAnalysis onNext={nextStep} setGlobalCaseId={setCaseId} setAnalysisData={setAnalysisData} />;
         }
     };
 

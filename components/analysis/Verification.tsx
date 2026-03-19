@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,34 +7,62 @@ import { Label } from "@/components/ui/label";
 import { AlertTriangle, CheckCircle2, ArrowRight, ArrowLeft, Edit3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const Verification = ({ onNext, onBack, caseId }: { onNext: () => void, onBack: () => void, caseId: string }) => {
+const Verification = ({ onNext, onBack, caseId, extracted }: { onNext: () => void, onBack: () => void, caseId: string, extracted?: any }) => {
     const [isEditing, setIsEditing] = useState(false);
-    const [confidence] = useState(0.92);
+    const [confidence] = useState(0.95);
 
-    // Hardcoded extracted data for demo/mock since we are in bridge mode
+    // Initial mock data as fallback
     const [extractedData, setExtractedData] = useState({
         metadata: {
-            matricula: "5654LGR",
-            bastidor: "SAJBB4BN8LCY87550",
-            fabricante: "JAGUAR",
-            modelo: "XF (X250)",
-            fecha: "2024-08-14",
-            referencia: "161832151335",
-            sistema: "AUDATEX",
-            precio_hora: "59.00"
+            matricula: "2117FSM",
+            bastidor: "WDD2040081A032770",
+            fabricante: "MERCEDES-BENZ",
+            modelo: "C Berlina (BM 204)",
+            fecha: "2025-11-07",
+            referencia: "EXP253651",
+            sistema: "SILVERDAT",
+            precio_hora: "40.00"
         },
         totales: {
-            repuestos_total: "942.16",
-            mo_chapa_ut: "285.0",
-            mo_chapa_eur: "1681.50",
-            mo_pintura_ut: "130.5",
-            mo_pintura_eur: "769.95",
-            mat_pintura_eur: "1251.10",
-            subtotal_neto: "4644.71",
-            iva: "975.39",
-            total_con_iva: "5620.10"
+            repuestos_total: "324.09",
+            mo_chapa_ut: "20.05",
+            mo_chapa_eur: "802.00",
+            mo_pintura_ut: "23.65",
+            mo_pintura_eur: "946.00",
+            mat_pintura_eur: "1012.70",
+            subtotal_neto: "3084.79",
+            iva: "647.81",
+            total_con_iva: "3732.60"
         }
     });
+
+    useEffect(() => {
+        if (extracted && extracted.success) {
+            setExtractedData({
+                metadata: {
+                    matricula: extracted.vehicle.plate || "S/D",
+                    bastidor: extracted.vehicle.vin || "S/D",
+                    fabricante: extracted.vehicle.brand || "S/D",
+                    modelo: extracted.vehicle.make_model || "S/D",
+                    fecha: new Date().toISOString().split('T')[0],
+                    referencia: "EXTRACTED",
+                    sistema: "AUTO",
+                    precio_hora: "40.00"
+                },
+                totales: {
+                    repuestos_total: extracted.financials.parts_total?.toString() || "0",
+                    mo_chapa_ut: "0",
+                    mo_chapa_eur: extracted.financials.labor_total?.toString() || "0",
+                    mo_pintura_ut: "0",
+                    mo_pintura_eur: extracted.financials.paint_labor?.toString() || "0",
+                    mat_pintura_eur: extracted.financials.paint_material?.toString() || "0",
+                    subtotal_neto: extracted.financials.total_net?.toString() || "0",
+                    iva: (extracted.financials.total_net * 0.21).toString(),
+                    total_con_iva: extracted.financials.total_gross?.toString() || "0"
+                }
+            });
+        }
+    }, [extracted]);
 
     const handleInputChange = (section: string, field: string, value: string) => {
         setExtractedData(prev => ({

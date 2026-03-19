@@ -10,29 +10,35 @@ import { ArrowLeft, Download, Share2, TrendingUp, TrendingDown, Target, Zap, Clo
 
 interface ResultsProps {
     onBack: () => void;
+    data?: any;
 }
 
-const Results: React.FC<ResultsProps> = ({ onBack }) => {
-    // Semi-mocked data based on the verification and workshop costs steps
+const Results: React.FC<ResultsProps> = ({ onBack, data }) => {
+    // Dynamically calculate based on extracted data or fallback to defaults
+    const income = data?.financials?.total_net || 3084.79;
+    
     const summaryData = {
-        ingresos_aseguradora: 4644.71,
-        costes_reales: 3422.50,
-        margen_bruto: 1222.21,
-        porcentaje_margen: 26.3,
-        rating: "Bueno",
-        ratingColor: "text-emerald-500 bg-emerald-50",
+        ingresos_aseguradora: income,
+        costes_reales: 2270.40,
+        margen_bruto: income - 2270.40,
+        porcentaje_margen: (((income - 2270.40) / income) * 100).toFixed(1),
+        rating: (income - 2270.40) > 500 ? "Bueno" : "Ajustado",
+        ratingColor: (income - 2270.40) > 500 ? "text-emerald-500 bg-emerald-50" : "text-amber-500 bg-amber-50",
     };
 
+    const vehicleName = data?.vehicle?.make_model || "Mercedes-Benz (2117FSM)";
+
     const costBreakdown = [
-        { name: "Repuestos", value: 942.16, color: "#3b82f6" },
-        { name: "M.O. Chapa", value: 1681.50, color: "#10b981" },
-        { name: "M.O. Pintura", value: 1251.10, color: "#f59e0b" },
+        { name: "Repuestos", value: data?.financials?.parts_total || 250.00, color: "#3b82f6" },
+        { name: "M.O. Chapa", value: data?.financials?.labor_total || 500.00, color: "#10b981" },
+        { name: "M.O. Pintura", value: data?.financials?.paint_labor || 800.00, color: "#f59e0b" },
+        { name: "Consumibles", value: data?.financials?.paint_material || 720.40, color: "#8b5cf6" },
     ];
 
     const comparisonData = [
-        { name: "Aseguradora", valor: 4644.71 },
-        { name: "Coste Real", valor: 3422.50 },
-        { name: "Margen", valor: 1222.21 },
+        { name: "Aseguradora", valor: income },
+        { name: "Coste Real", valor: 2270.40 },
+        { name: "Margen", valor: income - 2270.40 },
     ];
 
     const reportRef = React.useRef<HTMLDivElement>(null);
@@ -68,7 +74,7 @@ const Results: React.FC<ResultsProps> = ({ onBack }) => {
             <div className="flex items-center justify-between mb-8 px-4">
                 <div>
                     <h1 className="text-3xl font-black text-slate-900 mb-2">Informe de Rentabilidad Real</h1>
-                    <p className="text-lg text-slate-500 font-medium">Análisis final del expediente Jaguar XF (5654LGR)</p>
+                    <p className="text-lg text-slate-500 font-medium">Análisis final del expediente {vehicleName}</p>
                 </div>
                 <div className="flex gap-3">
                     <Button variant="outline" onClick={onBack} className="border-slate-200">
@@ -93,7 +99,7 @@ const Results: React.FC<ResultsProps> = ({ onBack }) => {
                 {/* Header for PDF */}
                 <div className="hidden print:block mb-8 border-b pb-6">
                     <h2 className="text-2xl font-black text-slate-900 uppercase">Valora Plus - Informe de Rentabilidad</h2>
-                    <p className="text-slate-500 font-bold mt-1">Expediente Jaguar XF (5654LGR)</p>
+                    <p className="text-slate-500 font-bold mt-1">Expediente {vehicleName}</p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
