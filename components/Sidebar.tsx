@@ -139,7 +139,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, activeRole }) 
                 <SectionHeader label="Taller y Operaciones" />
                 <NavItem to="/" icon={<DashboardIcon />} label="Panel de Resumen" active={location.pathname === '/'} isClient={true} />
                 <NavItem to="/kanban" icon={<KanbanIcon />} label="Tablero de Progreso" active={location.pathname === '/kanban'} isClient={true} />
-                <NavItem to="/operator-time" icon={<ClockIcon />} label="Control de Operarios" active={location.pathname === '/operator-time'} isClient={true} />
 
                 <SectionHeader label="Gestión Administrativa" />
                 <NavItem to="/contacts" icon={<ContactIcon />} label="Mis Clientes" active={location.pathname === '/contacts'} isClient={true} />

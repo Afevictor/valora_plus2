@@ -1837,6 +1837,29 @@ export const finishTask = async (timeLogId: string, taskId: string) => {
     }
 };
 
+export const resetTaskTimer = async (taskId: string) => {
+    try {
+        const { error: delErr } = await supabase
+            .from('task_time_logs')
+            .delete()
+            .eq('task_id', taskId);
+
+        if (delErr) throw delErr;
+
+        const { error: updErr } = await supabase
+            .from('work_order_tasks')
+            .update({ status: 'assigned' })
+            .eq('id', taskId);
+
+        if (updErr) throw updErr;
+
+        return { success: true };
+    } catch (e: any) {
+        console.error("Reset task timer failed:", e);
+        return { success: false, message: e.message };
+    }
+};
+
 export const getTaskTimeLogsForOrder = async (workOrderId: string) => {
     try {
         const { data: tasks } = await supabase.from('work_order_tasks').select('id').eq('work_order_id', workOrderId);

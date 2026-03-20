@@ -22,6 +22,7 @@ import {
     pauseTask,
     resumeTask,
     finishTask,
+    resetTaskTimer,
     getTaskTimeLogsForOrder,
     getExtractionJobs,
     processExtractionResults,
@@ -80,6 +81,8 @@ const ExpedienteDetail: React.FC = () => {
     const [isAssigning, setIsAssigning] = useState<string | null>(null);
     const [lastAction, setLastAction] = useState<{ type: string, status: 'success' | 'error' } | null>(null);
     const [tick, setTick] = useState(0);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [activeUserRole, setActiveUserRole] = useState<any>(null);
 
     // Inicializar Datos
     useEffect(() => {
@@ -88,6 +91,8 @@ const ExpedienteDetail: React.FC = () => {
             setIsLoadingMain(true);
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
+            setCurrentUserId(user.id);
+            setActiveUserRole(sessionStorage.getItem('vp_active_role'));
 
             const currentYear = new Date().getFullYear().toString();
 
@@ -186,7 +191,52 @@ const ExpedienteDetail: React.FC = () => {
         }
     };
 
-    // --- Operaciones de Asignación ---
+    // --- Operaciones de Tiempos & Cronómetro ---
+
+    const formatTime = (seconds: number) => {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    };
+
+    const handleActionWrap = async (actionFn: () => Promise<{ success: boolean, message?: any, error?: any }>) => {
+        try {
+            const result = await actionFn();
+            if (!result.success) {
+                alert(result.message || result.error || "La operación ha fallado");
+            } else {
+                // Sincronizar logs inmediatamente
+                const logs = await getTaskTimeLogsForOrder(job!.id);
+                setLaborLogs(logs);
+                const otTasks = await getWorkOrderTasks(job!.id);
+                setTasks(otTasks);
+            }
+        } catch (e: any) {
+            alert(`Error: ${e.message}`);
+        }
+    };
+
+    const handleStartTaskAction = async (taskId: string, empId: string) => {
+        await handleActionWrap(() => startTask(taskId, empId));
+    };
+
+    const handlePauseTaskAction = async (timeLogId: string) => {
+        await handleActionWrap(() => pauseTask(timeLogId));
+    };
+
+    const handleResumeTaskAction = async (taskId: string, empId: string) => {
+        await handleActionWrap(() => resumeTask(taskId, empId));
+    };
+
+    const handleFinishTaskAction = async (timeLogId: string, taskId: string) => {
+        await handleActionWrap(() => finishTask(timeLogId, taskId));
+    };
+
+    const handleResetTaskAction = async (taskId: string) => {
+        if (!window.confirm("¿Seguro que quieres reiniciar el tiempo de esta tarea? Se borrarán todos los registros previos.")) return;
+        await handleActionWrap(() => resetTaskTimer(taskId));
+    };
 
     const handleAssignOperator = async (taskType: string, employeeId: string) => {
         if (!job) {
@@ -407,9 +457,16 @@ const ExpedienteDetail: React.FC = () => {
                                     label: 'Gastos Reales',
                                     value: `€${(
                                         laborLogs.reduce((acc: number, l: any) => {
-                                            const s = l.duration_seconds || Math.floor((new Date(l.ended_at || new Date()).getTime() - new Date(l.started_at).getTime()) / 1000);
-                                            return acc + (s / 3600 * workshopRate);
-                                        }, 0) +
+                                            if (l.status === 'completed' || l.status === 'paused') {
+                                                return acc + (l.duration_seconds || 0);
+                                            }
+                                            if (l.status === 'in_progress') {
+                                                const now = new Date().getTime();
+                                                const start = new Date(l.started_at).getTime();
+                                                return acc + Math.floor((now - start) / 1000);
+                                            }
+                                            return acc;
+                                        }, 0) / 3600 * workshopRate +
                                         purchaseLines.reduce((acc: number, l: any) => acc + (l.total_amount || 0), 0)
                                     ).toFixed(2)}`,
                                     color: 'text-rose-600'
@@ -428,8 +485,15 @@ const ExpedienteDetail: React.FC = () => {
                                 {
                                     label: 'Horas Trabajadas',
                                     value: `${(laborLogs.reduce((acc: number, l: any) => {
-                                        const seconds = l.duration_seconds || Math.floor((new Date(l.ended_at || new Date()).getTime() - new Date(l.started_at).getTime()) / 1000);
-                                        return acc + seconds;
+                                        if (l.status === 'completed' || l.status === 'paused') {
+                                            return acc + (l.duration_seconds || 0);
+                                        }
+                                        if (l.status === 'in_progress') {
+                                            const now = new Date().getTime();
+                                            const start = new Date(l.started_at).getTime();
+                                            return acc + Math.floor((now - start) / 1000);
+                                        }
+                                        return acc;
                                     }, 0) / 3600).toFixed(1)}h`,
                                     color: 'text-blue-600'
                                 }
@@ -804,40 +868,143 @@ const ExpedienteDetail: React.FC = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {['Desmontaje', 'Reparación Chapa', 'Pintura', 'Montaje', 'Mecánica', 'Limpieza'].map(type => {
                                 const task = tasks.find(t => t.task_type === type);
+                                // Buscar si hay algún log activo o pausado para esta tarea
+                                const logs = laborLogs.filter(l => l.task_id === task?.id);
+                                const activeLog = logs.find(l => l.status === 'in_progress');
+                                const pausedLog = logs.find(l => l.status === 'paused'); // Usualmente solo hay uno activo o pausado
+                                
+                                // Calcular tiempo total acumulado (seconds)
+                                const accumulatedSeconds = logs.reduce((acc, l) => {
+                                    if (l.status === 'completed' || l.status === 'paused') {
+                                        return acc + (l.duration_seconds || 0);
+                                    }
+                                    if (l.status === 'in_progress') {
+                                        const now = new Date().getTime();
+                                        const start = new Date(l.started_at).getTime();
+                                        return acc + Math.floor((now - start) / 1000);
+                                    }
+                                    return acc;
+                                }, 0);
+
+                                const isMe = task?.employee_id === currentUserId;
+                                const isManager = activeUserRole === 'Admin' || activeUserRole === 'Admin_Staff' || activeUserRole === 'Client';
+                                const canControl = isMe || isManager;
 
                                 return (
-                                    <div key={type} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                                        <div className="flex justify-between items-center">
-                                            <h4 className="font-bold text-slate-900">{type}</h4>
-                                            {task?.status === 'in_progress' && (
-                                                <span className="flex h-2 w-2 relative">
-                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                                                </span>
+                                    <div key={type} className={`bg-white p-6 rounded-3xl border transition-all duration-300 ${activeLog ? 'border-emerald-200 ring-4 ring-emerald-50 shadow-xl' : 'border-slate-200 shadow-sm'}`}>
+                                            <div className="flex justify-between items-start mb-6">
+                                                <div>
+                                                    <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">{type}</h4>
+                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Control de Tiempo</p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    {accumulatedSeconds > 0 && !activeLog && (
+                                                        <button 
+                                                            onClick={() => handleResetTaskAction(task!.id)}
+                                                            className="p-2 text-slate-300 hover:text-rose-500 transition-colors"
+                                                            title="Reiniciar tiempo"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                                        </button>
+                                                    )}
+                                                    {activeLog && (
+                                                        <div className="flex items-center gap-2 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
+                                                            <span className="flex h-2 w-2 relative">
+                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                                            </span>
+                                                            <span className="text-[9px] font-black text-emerald-600 uppercase">En Curso</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                        <div className="space-y-6">
+                                            {/* Employee Selection */}
+                                            <div className="relative group">
+                                                <select
+                                                    className={`w-full p-4 bg-slate-50 border-2 rounded-2xl text-sm font-black outline-none transition-all cursor-pointer appearance-none ${task?.employee_id ? 'border-indigo-100 text-indigo-700' : 'border-slate-100 text-slate-400 hover:border-slate-200'}`}
+                                                    value={task?.employee_id || ''}
+                                                    onChange={(e) => handleAssignOperator(type, e.target.value)}
+                                                    disabled={isAssigning !== null || (activeLog && !isManager)}
+                                                >
+                                                    <option value="">⚙️ Sin asignar</option>
+                                                    {employees.map(emp => (
+                                                        <option key={emp.id} value={emp.id}>{emp.fullName}</option>
+                                                    ))}
+                                                </select>
+                                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                                                </div>
+                                            </div>
+
+                                            {/* Timer Display */}
+                                            {task?.employee_id && (
+                                                <div className={`p-6 rounded-2xl flex flex-col items-center justify-center border-2 ${activeLog ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}>
+                                                    <div className="text-4xl font-black tabular-nums tracking-tighter mb-1">
+                                                        {formatTime(accumulatedSeconds)}
+                                                    </div>
+                                                    <p className={`text-[9px] font-black uppercase tracking-[0.2em] ${activeLog ? 'text-emerald-100' : 'text-slate-400'}`}>Horas Reales</p>
+                                                </div>
+                                            )}
+
+                                            {/* Controls Area */}
+                                            {task?.employee_id && (
+                                                <div className="grid grid-cols-2 gap-3 pt-2">
+                                                    {activeLog ? (
+                                                        <>
+                                                            <button 
+                                                                onClick={() => handlePauseTaskAction(activeLog.id)}
+                                                                disabled={!canControl}
+                                                                className="flex items-center justify-center gap-2 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            >
+                                                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                                                                Pausar
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handleFinishTaskAction(activeLog.id, task.id)}
+                                                                disabled={!canControl}
+                                                                className="flex items-center justify-center gap-2 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            >
+                                                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                                                                Finalizar
+                                                            </button>
+                                                        </>
+                                                    ) : pausedLog ? (
+                                                        <>
+                                                            <button 
+                                                                onClick={() => handleResumeTaskAction(task.id, task.employee_id)}
+                                                                disabled={!canControl}
+                                                                className="col-span-1 flex items-center justify-center gap-2 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            >
+                                                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
+                                                                Reanudar
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handleFinishTaskAction(pausedLog.id, task.id)}
+                                                                disabled={!canControl}
+                                                                className="col-span-1 flex items-center justify-center gap-2 py-4 bg-slate-800 hover:bg-black text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            >
+                                                                Finalizar
+                                                            </button>
+                                                        </>
+                                                    ) : task?.status === 'finished' ? (
+                                                        <div className="col-span-2 py-4 bg-slate-100 rounded-2xl text-center">
+                                                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">✅ Tarea Completada</p>
+                                                        </div>
+                                                    ) : (
+                                                        <button 
+                                                            onClick={() => handleStartTaskAction(task.id, task.employee_id)}
+                                                            disabled={!canControl}
+                                                            className="col-span-2 flex items-center justify-center gap-2 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
+                                                            Iniciar Trabajo
+                                                        </button>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
-
-                                        <select
-                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-slate-200 transition-all cursor-pointer"
-                                            value={task?.employee_id || ''}
-                                            onChange={(e) => handleAssignOperator(type, e.target.value)}
-                                            disabled={isAssigning !== null}
-                                        >
-                                            <option value="">Sin asignar</option>
-                                            {employees.map(emp => (
-                                                <option key={emp.id} value={emp.id}>{emp.fullName}</option>
-                                            ))}
-                                        </select>
-
-                                        {task && (
-                                            <div className="flex items-center gap-2 pt-2 text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                                                <span className={`px-1.5 py-0.5 rounded ${task.status === 'finished' ? 'bg-emerald-100 text-emerald-600' :
-                                                    task.status === 'in_progress' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100'
-                                                    }`}>
-                                                    {task.status}
-                                                </span>
-                                            </div>
-                                        )}
                                     </div>
                                 );
                             })}
