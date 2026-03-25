@@ -672,7 +672,7 @@ const ExpedienteDetail: React.FC = () => {
                             </div>
                             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Ingresos Materiales/Recambios</p>
-                                <p className="text-3xl font-black text-slate-900">€{((billing?.materials_amount || 0) + parts.reduce((acc, p) => acc + (p.price_billed * p.qty_billed), 0))?.toFixed(2) || '0.00'}</p>
+                                <p className="text-3xl font-black text-slate-900">€{(parts.reduce((acc, p) => acc + ((p.price_billed || 0) * (p.qty_billed || 0)), 0))?.toFixed(2) || '0.00'}</p>
                             </div>
                         </div>
 

@@ -1416,34 +1416,58 @@ export const processExtractionResults = async (jobId: string): Promise<boolean> 
         const workshopId = job.workshop_id;
 
         // 1. Process Parts
+        let totalMaterialsAmount = 0;
         if (data.parts && Array.isArray(data.parts)) {
-            const partLines = data.parts.map((p: any) => ({
-                workshop_id: workshopId,
-                work_order_id: workOrderId,
-                part_number: p.part_number || p.reference,
-                description: p.description,
-                quantity: parseFloat(p.quantity || 1),
-                unit_price: parseFloat(p.price || 0),
-                total_amount: parseFloat(p.total || 0),
-                confidence_score: p.confidence || 1.0
-            }));
-            await supabase.from('work_order_parts').insert(partLines);
+            const partLines = data.parts.map((p: any) => {
+                const qty = parseFloat(p.quantity || 1);
+                const price = parseFloat(p.price || 0);
+                totalMaterialsAmount += parseFloat(p.total) || (qty * price);
+                
+                return {
+                    workshop_id: workshopId,
+                    work_order_id: workOrderId,
+                    part_number: p.part_number || p.reference || 'N/A',
+                    description: p.description || 'Recambio Extraído',
+                    qty_billed: qty,
+                    price_billed: price,
+                    confidence: p.confidence || 1.0,
+                    source: 'ai_extraction'
+                };
+            });
+            const { error: pErr } = await supabase.from('work_order_parts').insert(partLines);
+            if (pErr) console.error("Parts Insert Error:", pErr);
         }
 
         // 2. Process Labor (Billing)
+        let totalLaborHours = 0;
+        let totalLaborAmount = 0;
+        
         if (data.labor && Array.isArray(data.labor)) {
-            const laborLines = data.labor.map((l: any) => ({
-                workshop_id: workshopId,
-                work_order_id: workOrderId,
-                description: l.description,
-                quantity: parseFloat(l.hours || 0),
-                unit_price: parseFloat(l.price_hour || 0),
-                total_amount: parseFloat(l.total || 0),
-                confidence_score: l.confidence || 1.0,
-                billing_type: 'Labor'
-            }));
-            await supabase.from('work_order_billing').insert(laborLines);
+            data.labor.forEach((l: any) => {
+                const hours = parseFloat(l.hours || 0);
+                const total = parseFloat(l.total || 0) || (hours * parseFloat(l.price_hour || 0));
+                totalLaborHours += hours;
+                totalLaborAmount += total;
+            });
         }
+        
+        // Also check if extracted data gives explicit totals over-riding manual sum
+        const finalLaborAmount = data.totals?.labor_total || totalLaborAmount;
+        const finalMaterialsAmount = data.totals?.parts_total || totalMaterialsAmount;
+        const finalTotal = data.totals?.grand_total || (finalLaborAmount + finalMaterialsAmount);
+        const finalLaborHours = data.totals?.labor_hours || totalLaborHours;
+
+        const { error: bErr } = await supabase.from('work_order_billing').insert({
+            workshop_id: workshopId,
+            work_order_id: workOrderId,
+            labor_hours_billed: finalLaborHours,
+            labor_amount: finalLaborAmount,
+            materials_amount: finalMaterialsAmount,
+            total_amount: finalTotal,
+            source: 'ai_extraction',
+            invoice_status: 'draft'
+        });
+        if (bErr) console.error("Billing Insert Error:", bErr);
 
         return true;
     } catch (e) {

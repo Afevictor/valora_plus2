@@ -307,7 +307,11 @@ const NewValuation: React.FC = () => {
     };
 
     const handleCreateClient = async (newClient: Client) => {
-        await saveClientToSupabase(newClient);
+        const success = await saveClientToSupabase(newClient);
+        if (!success) {
+            alert("Error al guardar el cliente en la base de datos.");
+            return;
+        }
         setClients(prev => [...prev, newClient]);
 
         // If it's an insurance company, add to options

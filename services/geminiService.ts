@@ -162,102 +162,78 @@ export const analyzeVehicleReceptionBatch = async (
 };
 
 export const analyzeProfitabilityDocument = async (base64Data: string, mimeType: string = 'application/pdf') => {
-  console.log("Starting Local Extraction (Enhanced)...");
+  console.log("Starting AI Extraction for Profitability Analysis...");
 
   try {
-    let fullText = "";
-    const binaryString = atob(base64Data);
+    const response = await genAI.models.generateContent({
+      model: 'gemini-1.5-pro',
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: mimeType === 'application/pdf' ? 'application/pdf' : 'image/jpeg',
+              data: base64Data
+            }
+          },
+          {
+            text: `Eres un perito experto y gerente de un taller de chapa y pintura. 
+            Analiza este documento de valoración (posiblemente de Audatex, GT Motive o Solera).
+            
+            Extrae los siguientes datos financieros y técnicos en formato JSON estricto. Si un valor no existe o no se detecta, usa 0 (para números) o "N/D" (para textos).
+            Usa el punto (.) para los decimales.
+            
+            ESTRUCTURA JSON REQUERIDA (devolver SOLO esto sin markdown markers):
+            {
+              "success": true,
+              "vehicle": {
+                "make_model": "Marca y modelo del vehículo",
+                "plate": "Matrícula",
+                "vin": "Número de bastidor"
+              },
+              "financials": {
+                "total_gross": 0.0, // Total con IVA
+                "total_net": 0.0, // Base imponible
+                "parts_total": 0.0, // Total de recambios/piezas
+                "labor_total": 0.0, // Total importe Mano de Obra
+                "paint_material_total": 0.0, // Total importe Material de Pintura
+                "labor_hours": 0.0, // Horas totales de mano de obra
+                "labor_rate": 0.0 // Precio/hora de la mano de obra
+              },
+              "analysis": {
+                "summary": "Resumen rápido de 1 frase indicando el importe total y tipo de reparación",
+                "profitability_rating": "High" // Devuelve "High" si total es mayor a 1500, "Medium" entre 500 y 1500, "Low" si menor de 500
+              }
+            }`
+          }
+        ]
+      },
+      config: {
+        responseMimeType: 'application/json'
+      }
+    });
 
-    if (mimeType.includes("pdf")) {
+    const text = response.text || "";
+    if (!text) throw new Error("La IA no devolvió datos.");
+
+    const cleanJson = (str: string) => {
       try {
-        // @ts-ignore
-        const pdfjs = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/+esm');
-        pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
-
-        const loadingTask = pdfjs.getDocument({ data: binaryString });
-        const pdf = await loadingTask.promise;
-
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const textContent = await page.getTextContent();
-          const pageText = textContent.items.map((item: any) => item.str).join(' ');
-          fullText += pageText + "\n";
+        let cleaned = str.replace(/```json/g, "").replace(/```/g, "").trim();
+        const start = cleaned.indexOf("{");
+        const end = cleaned.lastIndexOf("}");
+        if (start !== -1 && end !== -1) {
+          cleaned = cleaned.substring(start, end + 1);
         }
-      } catch (pdfError) {
-        console.error("PDF Parsing Error:", pdfError);
-        throw new Error("No se pudo leer el texto del PDF.");
-      }
-    } else {
-      throw new Error("La extracción local solo soporta PDFs de texto.");
-    }
-
-    // Helper to clean numbers: "3.732,60" -> 3732.6
-    const cleanNum = (str: string) => {
-      if (!str) return 0;
-      return parseFloat(str.replace(/\./g, '').replace(',', '.'));
-    };
-
-    // --- REGEX PATTERNS ---
-    
-    // Total (Generic / GT Motive)
-    const totalMatch = fullText.match(/asciende\s+a\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+\(menos\s+franquicia\)\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+VALORACION\s+([\d.]+,\d{2})/i);
-    
-    // Vehicle Data
-    const plateMatch = fullText.match(/Matrícula\s+([A-Z0-9-]{6,10})/i);
-    const vinMatch = fullText.match(/Nº\s+ID\s+del\s+vehículo\s+([A-Z0-9]{17,})/i) || fullText.match(/Bastidor\s+([A-Z0-9]{17,})/i);
-    const brandModelMatch = fullText.match(/(Mercedes-Benz|Audi|BMW|Volkswagen|Renault|Peugeot|Citroen|Seat|Toyota|Ford|Nissan|Hyundai|Kia)\s+[^(\n]+/i);
-    
-    // Detailed Totals
-    const partsMatch = fullText.match(/Total\s+recambios\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+RECAMBIOS\s+([\d.]+,\d{2})/i);
-    const laborMatch = fullText.match(/Total\s+MO\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+MANO\s+DE\s+OBRA\s+([\d.]+,\d{2})/i);
-    const paintLaborMatch = fullText.match(/Total\s+MO\s+pintura\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+PINTURA\s+([\d.]+,\d{2})/i);
-    const paintMaterialMatch = fullText.match(/Subtotal\s+material\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+MATERIAL\s+DE\s+PINTURA\s+([\d.]+,\d{2})/i);
-    const baseMatch = fullText.match(/Base\s+imponible\s+([\d.]+,\d{2})/i) || fullText.match(/TOTAL\s+NETO\s+([\d.]+,\d{2})/i);
-
-    const data = {
-      matricula: plateMatch ? plateMatch[1].trim() : "S/D",
-      bastidor: vinMatch ? vinMatch[1].trim() : "S/D",
-      fabricante: brandModelMatch ? brandModelMatch[1].trim() : "Detectado",
-      modelo: brandModelMatch ? brandModelMatch[0].trim() : "Modelo",
-      totales: {
-        total_gross: totalMatch ? cleanNum(totalMatch[1]) : 0,
-        subtotal_neto: baseMatch ? cleanNum(baseMatch[1]) : 0,
-        repuestos: partsMatch ? cleanNum(partsMatch[1]) : 0,
-        mo_chapa: laborMatch ? cleanNum(laborMatch[1]) : 0,
-        mo_pintura: paintLaborMatch ? cleanNum(paintLaborMatch[1]) : 0,
-        mat_pintura: paintMaterialMatch ? cleanNum(paintMaterialMatch[1]) : 0
+        return JSON.parse(cleaned);
+      } catch (e) {
+        throw new Error("No se pudo parsear el resultado de la IA.");
       }
     };
 
-    // Fallback net if only gross is found
-    if (data.totales.total_gross > 0 && data.totales.subtotal_neto === 0) {
-      data.totales.subtotal_neto = data.totales.total_gross / 1.21;
-    }
-
-    return {
-      success: true,
-      vehicle: { 
-        make_model: data.modelo, 
-        plate: data.matricula, 
-        vin: data.bastidor,
-        brand: data.fabricante 
-      },
-      financials: { 
-        total_gross: data.totales.total_gross, 
-        total_net: data.totales.subtotal_neto,
-        parts_total: data.totales.repuestos,
-        labor_total: data.totales.mo_chapa,
-        paint_labor: data.totales.mo_pintura,
-        paint_material: data.totales.mat_pintura
-      },
-      analysis: { 
-        summary: `Extracción local exitosa: ${data.totales.total_gross}€`, 
-        profitability_rating: data.totales.total_gross > 2000 ? "High" : "Medium" 
-      }
-    };
+    const result = cleanJson(text);
+    return result;
 
   } catch (error) {
-    console.error("Local Extraction Failed:", error);
+    console.error("AI Extraction Failed:", error);
     return {
       success: false,
       financials: { total_gross: 0 },

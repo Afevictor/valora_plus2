@@ -59,17 +59,6 @@ const NewAppraisal: React.FC = () => {
     const [extractionStatus, setExtractionStatus] = useState<'idle' | 'processing' | 'completed' | 'failed' | 'requires_review'>('idle');
     const [extractionMessage, setExtractionMessage] = useState('');
     const [extractionJobId, setExtractionJobId] = useState<string | null>(null);
-    const [extractedBilling, setExtractedBilling] = useState<any>({
-        bodywork_hours: 0,
-        paint_hours: 0,
-        bodywork_rate: 45,
-        paint_rate: 50,
-        materials_amount: 0,
-        total_estimate: 0
-    });
-    const [extractedParts, setExtractedParts] = useState<any[]>([]);
-    const [confidenceScores, setConfidenceScores] = useState<any>(null);
-    const [showReviewUI, setShowReviewUI] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [previewFile, setPreviewFile] = useState<StagedFile | null>(null);
     const [tempTicketId] = useState(`OT-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`);
@@ -227,15 +216,7 @@ const NewAppraisal: React.FC = () => {
 
             if (data) {
                 applyExtractionResults(data);
-                setExtractedBilling(data.labor ? { ...data.labor, materials_amount: data.materials?.paint_amount, total_estimate: data.total_estimate } : null);
-                setExtractedParts(data.materials?.parts || []);
-                setConfidenceScores(scores);
-
-                if (status === 'requires_review') {
-                    setExtractionStatus('requires_review');
-                    setExtractionMessage('Análisis completado, pero requiere revisión manual.');
-                    setShowReviewUI(true);
-                } else {
+                if (status === 'requires_review' || status === 'completed') {
                     setExtractionStatus('completed');
                     setExtractionMessage('¡Datos extraídos y aplicados correctamente!');
                     setTimeout(() => setExtractionStatus('idle'), 3000);
@@ -272,19 +253,6 @@ const NewAppraisal: React.FC = () => {
                 incident_type: data.claim.incident_type || prev.incident_type,
                 incident_date: data.claim.incident_date || prev.incident_date
             }));
-        }
-        if (data.labor) {
-            setExtractedBilling({
-                bodywork_hours: data.labor.bodywork_hours || 0,
-                paint_hours: data.labor.paint_hours || 0,
-                bodywork_rate: data.labor.bodywork_rate || 45,
-                paint_rate: data.labor.paint_rate || 50,
-                materials_amount: data.materials?.paint_amount || 0,
-                total_estimate: data.total_estimate || 0
-            });
-        }
-        if (data.materials?.parts) {
-            setExtractedParts(data.materials.parts);
         }
     };
 
@@ -425,37 +393,6 @@ const NewAppraisal: React.FC = () => {
 
             if (extractionJobId) {
                 await supabase.from('extraction_jobs').update({ work_order_id: newOrder.id }).eq('id', extractionJobId);
-            }
-
-            if (extractedBilling && extractedBilling.total_estimate > 0) {
-                await supabase.from('work_order_billing').insert({
-                    workshop_id: workshopOwnerId,
-                    work_order_id: newOrder.id,
-                    bodywork_hours: extractedBilling.bodywork_hours || 0,
-                    paint_hours: extractedBilling.paint_hours || 0,
-                    bodywork_rate: extractedBilling.bodywork_rate || 45,
-                    paint_rate: extractedBilling.paint_rate || 50,
-                    labor_hours_billed: (extractedBilling.bodywork_hours || 0) + (extractedBilling.paint_hours || 0),
-                    labor_amount: (extractedBilling.bodywork_hours * (extractedBilling.bodywork_rate || 45)) + (extractedBilling.paint_hours * (extractedBilling.paint_rate || 50)),
-                    materials_amount: extractedBilling.materials_amount || 0,
-                    total_amount: extractedBilling.total_estimate || 0,
-                    invoice_status: 'draft',
-                    source: extractionJobId ? 'ai_extraction' : 'manual'
-                });
-            }
-
-            if (extractedParts.length > 0) {
-                const partsToInsert = extractedParts.map(p => ({
-                    workshop_id: workshopOwnerId,
-                    work_order_id: newOrder.id,
-                    part_number: p.part_number,
-                    description: p.description,
-                    qty_billed: p.quantity,
-                    price_billed: p.unit_price,
-                    confidence: p.confidence || 0,
-                    source: extractionJobId ? 'ai_extraction' : 'manual'
-                }));
-                await supabase.from('work_order_parts').insert(partsToInsert);
             }
 
             if (extractionJobId) {
@@ -669,106 +606,6 @@ const NewAppraisal: React.FC = () => {
 
                     </div>
 
-                    {/* PRESUPUESTO Y RECAMBIOS - Module A (Manual/AI) */}
-                    <div className="md:col-span-2 bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-8">
-                        <div className="flex justify-between items-center">
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                                Presupuesto y Recambios
-                            </h3>
-                            {(extractedBilling.total_estimate > 0 || extractedParts.length > 0) && (
-                                <span className="px-3 py-1 bg-brand-50 text-brand-600 rounded-full text-[10px] font-black uppercase tracking-tight">Datos Listos</span>
-                            )}
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Horas Chapa</label>
-                                <input type="number" step="0.5" className="w-full bg-transparent font-black text-slate-800 text-lg outline-none" value={extractedBilling.bodywork_hours} onChange={e => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    setExtractedBilling({ ...extractedBilling, bodywork_hours: val, total_estimate: (val * extractedBilling.bodywork_rate) + (extractedBilling.paint_hours * extractedBilling.paint_rate) + extractedBilling.materials_amount + extractedParts.reduce((acc, p) => acc + (p.unit_price * p.quantity), 0) });
-                                }} />
-                            </div>
-                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Horas Pintura</label>
-                                <input type="number" step="0.5" className="w-full bg-transparent font-black text-slate-800 text-lg outline-none" value={extractedBilling.paint_hours} onChange={e => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    setExtractedBilling({ ...extractedBilling, paint_hours: val, total_estimate: (extractedBilling.bodywork_hours * extractedBilling.bodywork_rate) + (val * extractedBilling.paint_rate) + extractedBilling.materials_amount + extractedParts.reduce((acc, p) => acc + (p.unit_price * p.quantity), 0) });
-                                }} />
-                            </div>
-                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Material Pintura (€)</label>
-                                <input type="number" className="w-full bg-transparent font-black text-slate-800 text-lg outline-none" value={extractedBilling.materials_amount} onChange={e => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    setExtractedBilling({ ...extractedBilling, materials_amount: val, total_estimate: (extractedBilling.bodywork_hours * extractedBilling.bodywork_rate) + (extractedBilling.paint_hours * extractedBilling.paint_rate) + val + extractedParts.reduce((acc, p) => acc + (p.unit_price * p.quantity), 0) });
-                                }} />
-                            </div>
-                            <div className="p-4 bg-brand-600 rounded-2xl border border-brand-500 text-white shadow-lg">
-                                <label className="block text-[10px] font-black text-white/60 uppercase mb-1">Total Estimado</label>
-                                <p className="text-xl font-black">€{extractedBilling.total_estimate.toFixed(2)}</p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-3">
-                            <div className="flex justify-between items-center">
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Listado de Recambios</h4>
-                                <button
-                                    onClick={() => setExtractedParts([...extractedParts, { description: '', part_number: '', quantity: 1, unit_price: 0 }])}
-                                    className="text-xs font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1"
-                                >
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                                    Añadir Recambio
-                                </button>
-                            </div>
-
-                            {extractedParts.length === 0 ? (
-                                <div className="py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                                    <p className="text-xs text-slate-400 font-medium italic">No se han añadido recambios todavía.</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                                    {extractedParts.map((part, idx) => (
-                                        <div key={idx} className="flex gap-3 p-3 bg-white rounded-xl border border-slate-200 items-center">
-                                            <input type="text" placeholder="Descripción" className="flex-1 text-xs font-bold border-none bg-transparent outline-none" value={part.description} onChange={e => {
-                                                const newParts = [...extractedParts];
-                                                newParts[idx].description = e.target.value;
-                                                setExtractedParts(newParts);
-                                            }} />
-                                            <input type="text" placeholder="Ref." className="w-24 text-[10px] font-mono border-none bg-transparent outline-none uppercase" value={part.part_number} onChange={e => {
-                                                const newParts = [...extractedParts];
-                                                newParts[idx].part_number = e.target.value;
-                                                setExtractedParts(newParts);
-                                            }} />
-                                            <input type="number" placeholder="Cant." className="w-12 text-xs font-bold text-center border-none bg-transparent outline-none" value={part.quantity} onChange={e => {
-                                                const newParts = [...extractedParts];
-                                                newParts[idx].quantity = parseFloat(e.target.value) || 0;
-                                                setExtractedParts(newParts);
-                                                // Update total estimate
-                                                const partsTotal = newParts.reduce((acc, p) => acc + (p.unit_price * p.quantity), 0);
-                                                setExtractedBilling({ ...extractedBilling, total_estimate: (extractedBilling.bodywork_hours * extractedBilling.bodywork_rate) + (extractedBilling.paint_hours * extractedBilling.paint_rate) + extractedBilling.materials_amount + partsTotal });
-                                            }} />
-                                            <input type="number" placeholder="Precio" className="w-20 text-xs font-bold text-right border-none bg-transparent outline-none" value={part.unit_price} onChange={e => {
-                                                const newParts = [...extractedParts];
-                                                newParts[idx].unit_price = parseFloat(e.target.value) || 0;
-                                                setExtractedParts(newParts);
-                                                // Update total estimate
-                                                const partsTotal = newParts.reduce((acc, p) => acc + (p.unit_price * p.quantity), 0);
-                                                setExtractedBilling({ ...extractedBilling, total_estimate: (extractedBilling.bodywork_hours * extractedBilling.bodywork_rate) + (extractedBilling.paint_hours * extractedBilling.paint_rate) + extractedBilling.materials_amount + partsTotal });
-                                            }} />
-                                            <button onClick={() => {
-                                                const newParts = extractedParts.filter((_, i) => i !== idx);
-                                                setExtractedParts(newParts);
-                                                const partsTotal = newParts.reduce((acc, p) => acc + (p.unit_price * p.quantity), 0);
-                                                setExtractedBilling({ ...extractedBilling, total_estimate: (extractedBilling.bodywork_hours * extractedBilling.bodywork_rate) + (extractedBilling.paint_hours * extractedBilling.paint_rate) + extractedBilling.materials_amount + partsTotal });
-                                            }} className="text-slate-300 hover:text-red-500">
-                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
 
                     <div className="bg-slate-900 text-white p-8 rounded-2xl shadow-xl space-y-6">
                         <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 pb-2">Orden de Trabajo</h3>
@@ -847,150 +684,11 @@ const NewAppraisal: React.FC = () => {
                 </div>
             )}
 
-            {/* MODAL REVISIÓN IA (Rule 2) */}
-            {showReviewUI && extractedBilling && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-[32px] shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-slate-200">
-                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <div>
-                                <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Revisión de Peritación IA</h2>
-                                <p className="text-sm text-slate-500 font-medium">Verifique los datos extraídos antes de aplicarlos a la orden.</p>
-                            </div>
-                            <button onClick={() => setShowReviewUI(false)} className="bg-white text-slate-400 hover:text-slate-600 w-12 h-12 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-center transition-all">
-                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-                            {/* Billing Section */}
-                            <section className="space-y-4">
-                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                                    Totales y Mano de Obra
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                    <div className={`p-4 rounded-2xl border transition-colors ${confidenceScores?.labor < 0.80 ? 'bg-yellow-50 border-yellow-200' : 'bg-slate-50 border-slate-100'}`}>
-                                        <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Horas Carrocería</label>
-                                        <input
-                                            type="number"
-                                            className="w-full bg-transparent font-black text-slate-800 text-lg outline-none"
-                                            value={extractedBilling.bodywork_hours}
-                                            onChange={e => setExtractedBilling({ ...extractedBilling, bodywork_hours: parseFloat(e.target.value) || 0 })}
-                                        />
-                                    </div>
-                                    <div className={`p-4 rounded-2xl border transition-colors ${confidenceScores?.labor < 0.80 ? 'bg-yellow-50 border-yellow-200' : 'bg-slate-50 border-slate-100'}`}>
-                                        <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Horas Pintura</label>
-                                        <input
-                                            type="number"
-                                            className="w-full bg-transparent font-black text-slate-800 text-lg outline-none"
-                                            value={extractedBilling.paint_hours}
-                                            onChange={e => setExtractedBilling({ ...extractedBilling, paint_hours: parseFloat(e.target.value) || 0 })}
-                                        />
-                                    </div>
-                                    <div className={`p-4 rounded-2xl border transition-colors ${confidenceScores?.materials < 0.80 ? 'bg-yellow-50 border-yellow-200' : 'bg-slate-50 border-slate-100'}`}>
-                                        <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Material Pintura</label>
-                                        <input
-                                            type="number"
-                                            className="w-full bg-transparent font-black text-slate-800 text-lg outline-none"
-                                            value={extractedBilling.materials_amount}
-                                            onChange={e => setExtractedBilling({ ...extractedBilling, materials_amount: parseFloat(e.target.value) || 0 })}
-                                        />
-                                    </div>
-                                    <div className="p-4 rounded-2xl border bg-brand-600 border-brand-500 text-white shadow-lg shadow-brand-100">
-                                        <label className="block text-[10px] font-black text-white/60 uppercase mb-1">Total Estimado</label>
-                                        <input
-                                            type="number"
-                                            className="w-full bg-transparent font-black text-white text-lg outline-none"
-                                            value={extractedBilling.total_estimate}
-                                            onChange={e => setExtractedBilling({ ...extractedBilling, total_estimate: parseFloat(e.target.value) || 0 })}
-                                        />
-                                    </div>
-                                </div>
-                            </section>
-
-                            {/* Parts Section */}
-                            <section className="space-y-4">
-                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
-                                    Recambios y Piezas
-                                </h3>
-                                <div className="space-y-2">
-                                    {extractedParts.map((part: any, idx: number) => (
-                                        <div key={idx} className={`flex flex-col md:flex-row gap-4 p-4 rounded-2xl border transition-colors ${part.confidence < 0.80 ? 'bg-yellow-50 border-yellow-200' : 'bg-white border-slate-200'}`}>
-                                            <div className="flex-1">
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Descripción</label>
-                                                <input
-                                                    type="text"
-                                                    className="w-full bg-transparent font-bold text-slate-800 text-sm outline-none"
-                                                    value={part.description}
-                                                    onChange={e => {
-                                                        const newParts = [...extractedParts];
-                                                        newParts[idx].description = e.target.value;
-                                                        setExtractedParts(newParts);
-                                                    }}
-                                                />
-                                            </div>
-                                            <div className="w-full md:w-48">
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Referencia</label>
-                                                <input
-                                                    type="text"
-                                                    className="w-full bg-transparent font-mono text-slate-600 text-xs outline-none uppercase"
-                                                    value={part.part_number}
-                                                    onChange={e => {
-                                                        const newParts = [...extractedParts];
-                                                        newParts[idx].part_number = e.target.value;
-                                                        setExtractedParts(newParts);
-                                                    }}
-                                                />
-                                            </div>
-                                            <div className="w-full md:w-24">
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Cant.</label>
-                                                <input
-                                                    type="number"
-                                                    className="w-full bg-transparent font-bold text-slate-800 text-sm outline-none"
-                                                    value={part.quantity}
-                                                    onChange={e => {
-                                                        const newParts = [...extractedParts];
-                                                        newParts[idx].quantity = parseFloat(e.target.value) || 0;
-                                                        setExtractedParts(newParts);
-                                                    }}
-                                                />
-                                            </div>
-                                            <div className="w-full md:w-32">
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">PVP</label>
-                                                <input
-                                                    type="number"
-                                                    className="w-full bg-transparent font-bold text-slate-800 text-sm outline-none"
-                                                    value={part.unit_price}
-                                                    onChange={e => {
-                                                        const newParts = [...extractedParts];
-                                                        newParts[idx].unit_price = parseFloat(e.target.value) || 0;
-                                                        setExtractedParts(newParts);
-                                                    }}
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </section>
-                        </div>
-
-                        <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-end gap-4">
-                            <button onClick={() => setShowReviewUI(false)} className="px-8 py-4 rounded-2xl font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-200 transition-all">Cancelar</button>
-                            <button
-                                onClick={() => {
-                                    setShowReviewUI(false);
-                                    setExtractionStatus('completed');
-                                    setExtractionMessage('Datos revisados y listos para guardar.');
-                                }}
-                                className="bg-brand-600 hover:bg-brand-700 text-white px-12 py-4 rounded-2xl font-black shadow-xl shadow-brand-100 transition-all transform active:scale-95 flex items-center gap-3"
-                            >
-                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                                CONFIRMAR Y APLICAR
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            {showCustomerModal && (
+                <WorkshopCustomerForm
+                    onSubmit={handleCreateCustomer}
+                    onCancel={() => setShowCustomerModal(false)}
+                />
             )}
         </div>
     );
